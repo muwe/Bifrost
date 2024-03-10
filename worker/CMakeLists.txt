@@ -311,6 +311,13 @@ add_executable(worker
         third_party/libwebrtc/libwebrtc/modules/congestion_controller/rtp/send_time_history.cc
         third_party/libwebrtc/libwebrtc/modules/congestion_controller/rtp/transport_feedback_adapter.cc
         third_party/libwebrtc/libwebrtc/modules/congestion_controller/rtp/control_handler.cc
+        third_party/libwebrtc/libwebrtc/modules/congestion_controller/bbr/bandwidth_sampler.cc
+        third_party/libwebrtc/libwebrtc/modules/congestion_controller/bbr/bbr_network_controller.cc
+        third_party/libwebrtc/libwebrtc/modules/congestion_controller/bbr/loss_rate_filter.cc
+        third_party/libwebrtc/libwebrtc/modules/congestion_controller/bbr/data_transfer_tracker.cc
+        third_party/libwebrtc/libwebrtc/modules/congestion_controller/bbr/bbr_factory.cc
+        third_party/libwebrtc/libwebrtc/modules/congestion_controller/bbr/rtt_stats.cc
+        # third_party/libwebrtc/libwebrtc/modules/congestion_controller/base/bbr_optional.cc
         # C++ source files fec.
         third_party/libwebrtc/libwebrtc/modules/rtp_rtcp/source/flexfec_header_reader_writer.cc
         third_party/libwebrtc/libwebrtc/modules/rtp_rtcp/source/ulpfec_header_reader_writer.cc
