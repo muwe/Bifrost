@@ -10,71 +10,54 @@
 #ifndef MODULES_CONGESTION_CONTROLLER_BBR_WINDOWED_FILTER_H_
 #define MODULES_CONGESTION_CONTROLLER_BBR_WINDOWED_FILTER_H_
 
-// From the Quic BBR implementation in Chromium
+// 来自 Chromium 中的 Quic BBR 实现
 
-// Implements Kathleen Nichols' algorithm for tracking the minimum (or maximum)
-// estimate of a stream of samples over some fixed time interval. (E.g.,
-// the minimum RTT over the past five minutes.) The algorithm keeps track of
-// the best, second best, and third best min (or max) estimates, maintaining an
-// invariant that the measurement time of the n'th best >= n-1'th best.
+// 实现了 Kathleen Nichols 的算法，用于在固定时间间隔内跟踪一系列样本的最小（或最大）估计值。
+// （例如，过去五分钟内的最小 RTT。）该算法跟踪最佳、次佳和第三佳的最小（或最大）估计值，
+// 维持一个不变量，即第 n 个最佳的测量时间 >= 第 n-1 个最佳的测量时间。
 
-// The algorithm works as follows. On a reset, all three estimates are set to
-// the same sample. The second best estimate is then recorded in the second
-// quarter of the window, and a third best estimate is recorded in the second
-// half of the window, bounding the worst case error when the true min is
-// monotonically increasing (or true max is monotonically decreasing) over the
-// window.
-//
-// A new best sample replaces all three estimates, since the new best is lower
-// (or higher) than everything else in the window and it is the most recent.
-// The window thus effectively gets reset on every new min. The same property
-// holds true for second best and third best estimates. Specifically, when a
-// sample arrives that is better than the second best but not better than the
-// best, it replaces the second and third best estimates but not the best
-// estimate. Similarly, a sample that is better than the third best estimate
-// but not the other estimates replaces only the third best estimate.
-//
-// Finally, when the best expires, it is replaced by the second best, which in
-// turn is replaced by the third best. The newest sample replaces the third
-// best.
+// 该算法的工作原理如下。在重置时，所有三个估计值都设置为相同的样本。然后在窗口的第二个四分之一中记录第二佳估计值，
+// 在窗口的后半部分记录第三佳估计值，从而限制了当真实最小值在窗口内单调增加（或真实最大值单调减少）时的最坏情况误差。
+
+// 一个新的最佳样本会替换所有三个估计值，因为新的最佳值比窗口中的其他所有值都低（或高），并且它是最近的。
+// 因此，每个新的最小值都会有效地重置窗口。对于第二佳和第三佳估计值也适用相同的属性。具体来说，当一个样本到达时，
+// 如果它比第二佳估计值更好但不比最佳估计值更好，它会替换第二佳和第三佳估计值，但不会替换最佳估计值。
+// 同样地，一个比第三佳估计值更好但不比其他估计值更好的样本只会替换第三佳估计值。
+
+// 最后，当最佳估计值过期时，它会被第二佳估计值替换，而第二佳估计值又会被第三佳估计值替换。最新的样本会替换第三佳估计值。
 
 namespace webrtc {
 namespace bbr {
 
-// Compares two values and returns true if the first is less than or equal
-// to the second.
+// 比较两个值，如果第一个值小于或等于第二个值，则返回 true。
 template <class T>
 struct MinFilter {
   bool operator()(const T& lhs, const T& rhs) const { return lhs <= rhs; }
 };
 
-// Compares two values and returns true if the first is greater than or equal
-// to the second.
+// 比较两个值，如果第一个值大于或等于第二个值，则返回 true。
 template <class T>
 struct MaxFilter {
   bool operator()(const T& lhs, const T& rhs) const { return lhs >= rhs; }
 };
 
-// Use the following to construct a windowed filter object of type T.
-// For example, a min filter using Timestamp as the time type:
+// 使用以下方法构造类型为 T 的窗口化过滤器对象。
+// 例如，使用 Timestamp 作为时间类型的最小过滤器：
 //   WindowedFilter<T, MinFilter<T>, Timestamp, TimeDelta>
 //   ObjectName;
-// A max filter using 64-bit integers as the time type:
+// 使用 64 位整数作为时间类型的最大过滤器：
 //   WindowedFilter<T, MaxFilter<T>, uint64_t, int64_t> ObjectName;
-// Specifically, this template takes four arguments:
-// 1. T -- type of the measurement that is being filtered.
-// 2. Compare -- MinFilter<T> or MaxFilter<T>, depending on the type of filter
-//    desired.
-// 3. TimeT -- the type used to represent timestamps.
-// 4. TimeDeltaT -- the type used to represent continuous time intervals between
-//    two timestamps.  Has to be the type of (a - b) if both |a| and |b| are
-//    of type TimeT.
+// 具体来说，这个模板接受四个参数：
+// 1. T -- 被过滤的测量值的类型。
+// 2. Compare -- 根据所需的过滤器类型，使用 MinFilter<T> 或 MaxFilter<T>。
+// 3. TimeT -- 用于表示时间戳的类型。
+// 4. TimeDeltaT -- 用于表示两个时间戳之间的连续时间间隔的类型。如果 |a| 和 |b| 都是 TimeT 类型，则必须是 (a - b) 的类型。
 template <class T, class Compare, typename TimeT, typename TimeDeltaT>
 class WindowedFilter {
  public:
-  // |window_length| is the period after which a best estimate expires.
-  // |zero_value| is used as the uninitialized value for objects of T.
-  // Importantly, |zero_value| should be an invalid value for a true sample.
+  // |window_length| 是最佳估计值过期后的时间周期。
+  // |zero_value| 用作 T 对象的未初始化值。
+  // 重要的是，|zero_value| 应该是真实样本的无效值。
   WindowedFilter(TimeDeltaT window_length, T zero_value, TimeT zero_time)
       : window_length_(window_length),
         zero_value_(zero_value),
@@ -82,16 +65,14 @@ class WindowedFilter {
                    Sample(zero_value_, zero_time),
                    Sample(zero_value_, zero_time)} {}
 
-  // Changes the window length.  Does not update any current samples.
+  // 更改窗口长度。不会更新任何当前样本。
   void SetWindowLength(TimeDeltaT window_length) {
     window_length_ = window_length;
   }
 
-  // Updates best estimates with |sample|, and expires and updates best
-  // estimates as necessary.
+  // 使用 |sample| 更新最佳估计值，并在必要时过期并更新最佳估计值。
   void Update(T new_sample, TimeT new_time) {
-    // Reset all estimates if they have not yet been initialized, if new sample
-    // is a new best, or if the newest recorded estimate is too old.
+    // 如果所有估计值尚未初始化，或者新样本是新的最佳值，或者最新记录的估计值太旧，则重置所有估计值。
     if (estimates_[0].sample == zero_value_ ||
         Compare()(new_sample, estimates_[0].sample) ||
         new_time - estimates_[2].time > window_length_) {
@@ -106,17 +87,14 @@ class WindowedFilter {
       estimates_[2] = Sample(new_sample, new_time);
     }
 
-    // Expire and update estimates as necessary.
+    // 必要时过期并更新估计值。
     if (new_time - estimates_[0].time > window_length_) {
-      // The best estimate hasn't been updated for an entire window, so promote
-      // second and third best estimates.
+      // 最佳估计值在整个窗口中都没有更新，因此提升第二佳和第三佳估计值。
       estimates_[0] = estimates_[1];
       estimates_[1] = estimates_[2];
       estimates_[2] = Sample(new_sample, new_time);
-      // Need to iterate one more time. Check if the new best estimate is
-      // outside the window as well, since it may also have been recorded a
-      // long time ago. Don't need to iterate once more since we cover that
-      // case at the beginning of the method.
+      // 需要再次迭代。检查新的最佳估计值是否也在窗口外，因为它可能也是很久以前记录的。
+      // 不需要再次迭代，因为我们在方法开始时就覆盖了这种情况。
       if (new_time - estimates_[0].time > window_length_) {
         estimates_[0] = estimates_[1];
         estimates_[1] = estimates_[2];
@@ -125,21 +103,19 @@ class WindowedFilter {
     }
     if (estimates_[1].sample == estimates_[0].sample &&
         new_time - estimates_[1].time > window_length_ >> 2) {
-      // A quarter of the window has passed without a better sample, so the
-      // second-best estimate is taken from the second quarter of the window.
+      // 窗口的四分之一已经过去，没有更好的样本，因此第二佳估计值取自窗口的第二四分之一。
       estimates_[2] = estimates_[1] = Sample(new_sample, new_time);
       return;
     }
 
     if (estimates_[2].sample == estimates_[1].sample &&
         new_time - estimates_[2].time > window_length_ >> 1) {
-      // We've passed a half of the window without a better estimate, so take
-      // a third-best estimate from the second half of the window.
+      // 窗口的一半已经过去，没有更好的估计值，因此第三佳估计值取自窗口的后半部分。
       estimates_[2] = Sample(new_sample, new_time);
     }
   }
 
-  // Resets all estimates to new sample.
+  // 将所有估计值重置为新样本。
   void Reset(T new_sample, TimeT new_time) {
     estimates_[0] = estimates_[1] = estimates_[2] =
         Sample(new_sample, new_time);
@@ -157,9 +133,9 @@ class WindowedFilter {
         : sample(init_sample), time(init_time) {}
   };
 
-  TimeDeltaT window_length_;  // Time length of window.
-  T zero_value_;              // Uninitialized value of T.
-  Sample estimates_[3];       // Best estimate is element 0.
+  TimeDeltaT window_length_;  // 窗口的时间长度。
+  T zero_value_;              // T 的未初始化值。
+  Sample estimates_[3];       // 最佳估计值是元素 0。
 };
 
 }  // namespace bbr

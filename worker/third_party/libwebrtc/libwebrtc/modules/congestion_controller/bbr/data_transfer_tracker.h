@@ -30,9 +30,7 @@ class DataTransferTracker {
   void AddSample(DataSize size_delta, Timestamp send_time, Timestamp ack_time);
   void ClearOldSamples(Timestamp excluding_end);
 
-  // Get the average data rate in the window that starts with the last ack which
-  // comes before covered_start and ends at the first ack that comes after or at
-  // including_end.
+  // 获取从最后一个在 covered_start 之前的 ACK 开始，到第一个在 including_end 之后或包括 including_end 的 ACK 结束的窗口中的平均数据速率。
   Result GetRatesByAckTime(Timestamp covered_start, Timestamp including_end);
 
  private:

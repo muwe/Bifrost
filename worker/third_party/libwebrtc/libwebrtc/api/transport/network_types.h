@@ -183,8 +183,12 @@ struct PacerConfig {
   TimeDelta time_window = TimeDelta::PlusInfinity();
   // Pacer should send at least pad_window data over time_window duration.
   DataSize pad_window = DataSize::Zero();
-  DataRate data_rate() const { return data_window / time_window; }
-  DataRate pad_rate() const { return pad_window / time_window; }
+  // DataRate data_rate() const { return data_window / time_window; }
+  // DataRate pad_rate() const { return pad_window / time_window; }
+  DataRate local_data_rate = DataRate::Zero();
+  DataRate local_pad_rate = DataRate::Zero();
+  DataRate data_rate() const { return local_data_rate; }
+  DataRate pad_rate() const { return local_pad_rate;}
 };
 
 struct ProbeClusterConfig {

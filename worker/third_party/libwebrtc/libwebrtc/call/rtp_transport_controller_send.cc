@@ -108,14 +108,14 @@ RtpTransportControllerSend::RtpTransportControllerSend(
 
 RtpTransportControllerSend::~RtpTransportControllerSend() {}
 
-void RtpTransportControllerSend::UpdateControlState() {
+void RtpTransportControllerSend::UpdateControlState(NetworkControlUpdate& network_update) {
   absl::optional<TargetTransferRate> update = control_handler_->GetUpdate();
   if (!update) return;
 
   // We won't create control_handler_ until we have an observers.
   // RTC_DCHECK(observer_ != nullptr);
 
-  observer_->OnTargetTransferRate(*update);
+  observer_->OnTargetTransferRate(*update, network_update);
 }
 
 PacketRouter* RtpTransportControllerSend::packet_router() {
@@ -179,8 +179,9 @@ void RtpTransportControllerSend::OnNetworkAvailability(bool network_available) {
   pacer_.UpdateOutstandingData(0);
 
   control_handler_->SetNetworkAvailability(network_available_);
-  PostUpdates(controller_->OnNetworkAvailability(msg));
-  UpdateControlState();
+  // PostUpdates(controller_->OnNetworkAvailability(msg));
+  NetworkControlUpdate update = controller_->OnNetworkAvailability(msg);
+  UpdateControlState(update);
 }
 
 RtcpBandwidthObserver* RtpTransportControllerSend::GetBandwidthObserver() {
@@ -312,7 +313,7 @@ void RtpTransportControllerSend::PostUpdates(NetworkControlUpdate update) {
   }
   if (update.target_rate) {
     control_handler_->SetTargetRate(*update.target_rate);
-    UpdateControlState();
+    UpdateControlState(update);
   }
 }
 

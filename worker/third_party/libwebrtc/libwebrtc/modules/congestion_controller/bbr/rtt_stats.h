@@ -45,6 +45,17 @@ class RttStats {
   // 返回最近一次RTT样本之前的平滑后的RTT。
   TimeDelta previous_srtt() const { return previous_srtt_; }
 
+  // 返回最近的RTT测量值。
+  // 如果没有有效的更新发生，可能返回Zero。
+  TimeDelta latest_rtt() const { return latest_rtt_; }
+
+  // 返回整个连接的最小RTT。
+  // 如果没有有效的更新发生，可能返回Zero。
+  TimeDelta min_rtt() const { return min_rtt_; }
+
+  // 返回平均偏差值。
+  TimeDelta mean_deviation() const { return mean_deviation_; }
+
   // 返回初始RTT的微秒值。
   int64_t initial_rtt_us() const { return initial_rtt_us_; }
 
@@ -58,16 +69,6 @@ class RttStats {
     initial_rtt_us_ = initial_rtt_us;
   }
 
-  // 返回最近的RTT测量值。
-  // 如果没有有效的更新发生，可能返回Zero。
-  TimeDelta latest_rtt() const { return latest_rtt_; }
-
-  // 返回整个连接的最小RTT。
-  // 如果没有有效的更新发生，可能返回Zero。
-  TimeDelta min_rtt() const { return min_rtt_; }
-
-  // 返回平均偏差值。
-  TimeDelta mean_deviation() const { return mean_deviation_; }
 
  private:
   TimeDelta latest_rtt_; // 最近的RTT测量值。

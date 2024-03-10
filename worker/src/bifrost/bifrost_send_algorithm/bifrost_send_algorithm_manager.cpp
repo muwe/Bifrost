@@ -24,8 +24,9 @@ BifrostSendAlgorithmManager::BifrostSendAlgorithmManager(
       this->algorithm_interface_ = std::make_shared<QuicSendAlgorithmAdapter>(uv_loop, congestion_algorithm_type);
       break;
     case quic::kGoogCC:
+    case quic::kBBRvWebrtc:
       this->algorithm_interface_ = std::make_shared<TransportCongestionControlClient>(
-          this, InitialAvailableGccBitrate, uv_loop);
+          this, congestion_algorithm_type, InitialAvailableGccBitrate, uv_loop);
       break;
   }
 }
@@ -45,5 +46,29 @@ void BifrostSendAlgorithmManager::OnReceiveReceiverReport(webrtc::RTCPReportBloc
 
 void BifrostSendAlgorithmManager::UpdateRtt(float rtt) {
   this->algorithm_interface_->UpdateRtt(rtt);
+}
+
+uint32_t BifrostSendAlgorithmManager::get_pacing_rate() { 
+  return algorithm_interface_->get_pacing_rate(); 
+}
+
+uint32_t BifrostSendAlgorithmManager::get_congestion_windows() { 
+  return algorithm_interface_->get_congestion_windows(); 
+}
+
+uint32_t BifrostSendAlgorithmManager::get_bytes_in_flight() { 
+  return algorithm_interface_->get_bytes_in_flight(); 
+}
+
+uint32_t BifrostSendAlgorithmManager::get_pacing_transfer_time(uint32_t bytes) {
+  return algorithm_interface_->get_pacing_transfer_time(bytes); 
+}
+
+std::vector<double> BifrostSendAlgorithmManager::get_trends() {
+  return algorithm_interface_->get_trends(); 
+}
+
+uint32_t BifrostSendAlgorithmManager::get_avalibale_bitrate() {
+  return algorithm_interface_->get_avalibale_bitrate(); 
 }
 }  // namespace bifrost

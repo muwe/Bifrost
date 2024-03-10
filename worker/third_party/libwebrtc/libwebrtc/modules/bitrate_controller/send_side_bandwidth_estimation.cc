@@ -23,10 +23,12 @@
 #include "modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "system_wrappers/source/field_trial.h"
 
+//#define TURN_OFF_LOST_BWE 
+
 namespace webrtc {
 namespace {
 constexpr TimeDelta kBweIncreaseInterval = TimeDelta::Millis<1000>();
-// constexpr TimeDelta kBweDecreaseInterval = TimeDelta::Millis<300>();
+constexpr TimeDelta kBweDecreaseInterval = TimeDelta::Millis<300>();
 constexpr TimeDelta kStartPhase = TimeDelta::Millis<2000>();
 constexpr TimeDelta kBweConverganceTime = TimeDelta::Millis<20000>();
 constexpr int kLimitNumPackets = 20;
@@ -438,131 +440,128 @@ void SendSideBandwidthEstimation::UpdateRtt(TimeDelta rtt, Timestamp at_time) {
 
 // frq test turn off lost bwe
 void SendSideBandwidthEstimation::UpdateEstimate(Timestamp at_time) {
-  //  DataRate new_bitrate = current_bitrate_;
-  //  if (rtt_backoff_.CorrectedRtt(at_time) > rtt_backoff_.rtt_limit_) {
-  //    if (at_time - time_last_decrease_ >= rtt_backoff_.drop_interval_ &&
-  //        current_bitrate_ > rtt_backoff_.bandwidth_floor_) {
-  //      time_last_decrease_ = at_time;
-  //      new_bitrate = std::max(current_bitrate_ * rtt_backoff_.drop_fraction_,
-  //                             rtt_backoff_.bandwidth_floor_.Get());
-  //      link_capacity_.OnRttBackoff(new_bitrate, at_time);
-  //    }
-  //    CapBitrateToThresholds(at_time, new_bitrate);
-  //    return;
-  //  }
-  //
-  //  // We trust the REMB and/or delay-based estimate during the first 2
-  //  seconds if
-  //  // we haven't had any packet loss reported, to allow startup bitrate
-  //  probing. if (last_fraction_loss_ == 0 && IsInStartPhase(at_time)) {
-  //    new_bitrate = std::max(bwe_incoming_, new_bitrate);
-  //    new_bitrate = std::max(delay_based_bitrate_, new_bitrate);
-  //    if (loss_based_bandwidth_estimation_.Enabled()) {
-  //      loss_based_bandwidth_estimation_.SetInitialBitrate(new_bitrate);
-  //    }
-  //
-  //    if (new_bitrate != current_bitrate_) {
-  //      min_bitrate_history_.clear();
-  //      if (loss_based_bandwidth_estimation_.Enabled()) {
-  //        min_bitrate_history_.push_back(std::make_pair(at_time,
-  //        new_bitrate));
-  //      } else {
-  //        min_bitrate_history_.push_back(
-  //            std::make_pair(at_time, current_bitrate_));
-  //      }
-  //      CapBitrateToThresholds(at_time, new_bitrate);
-  //      return;
-  //    }
-  //  }
-  //  UpdateMinHistory(at_time);
-  //  if (last_loss_packet_report_.IsInfinite()) {
-  //    // No feedback received.
-  //    CapBitrateToThresholds(at_time, current_bitrate_);
-  //    return;
-  //  }
-  //
-  //  if (loss_based_bandwidth_estimation_.Enabled()) {
-  //    loss_based_bandwidth_estimation_.Update(
-  //        at_time, min_bitrate_history_.front().second,
-  //        last_round_trip_time_);
-  //    new_bitrate = MaybeRampupOrBackoff(new_bitrate, at_time);
-  //    CapBitrateToThresholds(at_time, new_bitrate);
-  //    return;
-  //  }
-  //
-  //  TimeDelta time_since_loss_packet_report = at_time -
-  //  last_loss_packet_report_; TimeDelta time_since_loss_feedback = at_time -
-  //  last_loss_feedback_; if (time_since_loss_packet_report < 1.2 *
-  //  kMaxRtcpFeedbackInterval) {
-  //    // We only care about loss above a given bitrate threshold.
-  //    float loss = last_fraction_loss_ / 256.0f;
-  //    // We only make decisions based on loss when the bitrate is above a
-  //    // threshold. This is a crude way of handling loss which is uncorrelated
-  //    // to congestion.
-  //    if (current_bitrate_ < bitrate_threshold_ || loss <=
-  //    low_loss_threshold_) {
-  //      // Loss < 2%: Increase rate by 8% of the min bitrate in the last
-  //      // kBweIncreaseInterval.
-  //      // Note that by remembering the bitrate over the last second one can
-  //      // rampup up one second faster than if only allowed to start ramping
-  //      // at 8% per second rate now. E.g.:
-  //      //   If sending a constant 100kbps it can rampup immediately to
-  //      108kbps
-  //      //   whenever a receiver report is received with lower packet loss.
-  //      //   If instead one would do: current_bitrate_ *= 1.08^(delta time),
-  //      //   it would take over one second since the lower packet loss to
-  //      achieve
-  //      //   108kbps.
-  //      new_bitrate =
-  //          DataRate::bps(min_bitrate_history_.front().second.bps() * 1.08 +
-  //          0.5);
-  //
-  //      // Add 1 kbps extra, just to make sure that we do not get stuck
-  //      // (gives a little extra increase at low rates, negligible at higher
-  //      // rates).
-  //      new_bitrate += DataRate::bps(1000);
-  //    } else if (current_bitrate_ > bitrate_threshold_) {
-  //      if (loss <= high_loss_threshold_) {
-  //        // Loss between 2% - 10%: Do nothing.
-  //      } else {
-  //        // Loss > 10%: Limit the rate decreases to once a
-  //        kBweDecreaseInterval
-  //        // + rtt.
-  //        if (!has_decreased_since_last_fraction_loss_ &&
-  //            (at_time - time_last_decrease_) >=
-  //                (kBweDecreaseInterval + last_round_trip_time_)) {
-  //          time_last_decrease_ = at_time;
-  //
-  //          // Reduce rate:
-  //          //   newRate = rate * (1 - 0.5*lossRate);
-  //          //   where packetLoss = 256*lossRate;
-  //          new_bitrate =
-  //              DataRate::bps((current_bitrate_.bps() *
-  //                             static_cast<double>(512 - last_fraction_loss_))
-  //                             /
-  //                            512.0);
-  //          has_decreased_since_last_fraction_loss_ = true;
-  //        }
-  //      }
-  //    }
-  //  } else if (time_since_loss_feedback >
-  //                 kFeedbackTimeoutIntervals * kMaxRtcpFeedbackInterval &&
-  //             (last_timeout_.IsInfinite() ||
-  //              at_time - last_timeout_ > kTimeoutInterval)) {
-  //    if (in_timeout_experiment_) {
-  //      MS_WARN_TAG(bwe, "Feedback timed out (%s), reducint bitrate",
-  //                          ToString(time_since_loss_feedback).c_str());
-  //      new_bitrate = new_bitrate * 0.8;
-  //      // Reset accumulators since we've already acted on missing feedback
-  //      and
-  //      // shouldn't to act again on these old lost packets.
-  //      lost_packets_since_last_loss_update_ = 0;
-  //      expected_packets_since_last_loss_update_ = 0;
-  //      last_timeout_ = at_time;
-  //    }
-  //  }
-  //
-  //  CapBitrateToThresholds(at_time, new_bitrate);
+#ifndef TURN_OFF_LOST_BWE  
+   DataRate new_bitrate = current_bitrate_;
+   if (rtt_backoff_.CorrectedRtt(at_time) > rtt_backoff_.rtt_limit_) {
+     if (at_time - time_last_decrease_ >= rtt_backoff_.drop_interval_ &&
+         current_bitrate_ > rtt_backoff_.bandwidth_floor_) {
+       time_last_decrease_ = at_time;
+       new_bitrate = std::max(current_bitrate_ * rtt_backoff_.drop_fraction_,
+                              rtt_backoff_.bandwidth_floor_.Get());
+       link_capacity_.OnRttBackoff(new_bitrate, at_time);
+     }
+     CapBitrateToThresholds(at_time, new_bitrate);
+     return;
+   }
+  
+   // We trust the REMB and/or delay-based estimate during the first 2 seconds if
+   // we haven't had any packet loss reported, to allow startup bitrate probing. 
+   if (last_fraction_loss_ == 0 && IsInStartPhase(at_time)) {
+     new_bitrate = std::max(bwe_incoming_, new_bitrate);
+     new_bitrate = std::max(delay_based_bitrate_, new_bitrate);
+     if (loss_based_bandwidth_estimation_.Enabled()) {
+       loss_based_bandwidth_estimation_.SetInitialBitrate(new_bitrate);
+     }
+  
+     if (new_bitrate != current_bitrate_) {
+       min_bitrate_history_.clear();
+       if (loss_based_bandwidth_estimation_.Enabled()) {
+         min_bitrate_history_.push_back(std::make_pair(at_time,
+         new_bitrate));
+       } else {
+         min_bitrate_history_.push_back(
+             std::make_pair(at_time, current_bitrate_));
+       }
+       CapBitrateToThresholds(at_time, new_bitrate);
+       return;
+     }
+   }
+   UpdateMinHistory(at_time);
+   if (last_loss_packet_report_.IsInfinite()) {
+     // No feedback received.
+     CapBitrateToThresholds(at_time, current_bitrate_);
+     return;
+   }
+  
+   if (loss_based_bandwidth_estimation_.Enabled()) {
+     loss_based_bandwidth_estimation_.Update(
+         at_time, min_bitrate_history_.front().second,
+         last_round_trip_time_);
+     new_bitrate = MaybeRampupOrBackoff(new_bitrate, at_time);
+     CapBitrateToThresholds(at_time, new_bitrate);
+     return;
+   }
+  
+   TimeDelta time_since_loss_packet_report = at_time -
+   last_loss_packet_report_; TimeDelta time_since_loss_feedback = at_time -
+   last_loss_feedback_; if (time_since_loss_packet_report < 1.2 *
+   kMaxRtcpFeedbackInterval) {
+     // We only care about loss above a given bitrate threshold.
+     float loss = last_fraction_loss_ / 256.0f;
+     // We only make decisions based on loss when the bitrate is above a
+     // threshold. This is a crude way of handling loss which is uncorrelated
+     // to congestion.
+     if (current_bitrate_ < bitrate_threshold_ || loss <=
+     low_loss_threshold_) {
+       // Loss < 2%: Increase rate by 8% of the min bitrate in the last
+       // kBweIncreaseInterval.
+       // Note that by remembering the bitrate over the last second one can
+       // rampup up one second faster than if only allowed to start ramping
+       // at 8% per second rate now. E.g.:
+       //   If sending a constant 100kbps it can rampup immediately to 108kbps
+       //   whenever a receiver report is received with lower packet loss.
+       //   If instead one would do: current_bitrate_ *= 1.08^(delta time),
+       //   it would take over one second since the lower packet loss to achieve
+       //   108kbps.
+       new_bitrate =
+           DataRate::bps(min_bitrate_history_.front().second.bps() * 1.08 +
+           0.5);
+  
+       // Add 1 kbps extra, just to make sure that we do not get stuck
+       // (gives a little extra increase at low rates, negligible at higher
+       // rates).
+       new_bitrate += DataRate::bps(1000);
+     } else if (current_bitrate_ > bitrate_threshold_) {
+       if (loss <= high_loss_threshold_) {
+         // Loss between 2% - 10%: Do nothing.
+       } else {
+         // Loss > 10%: Limit the rate decreases to once a kBweDecreaseInterval
+         // + rtt.
+         if (!has_decreased_since_last_fraction_loss_ &&
+             (at_time - time_last_decrease_) >=
+                 (kBweDecreaseInterval + last_round_trip_time_)) {
+           time_last_decrease_ = at_time;
+  
+           // Reduce rate:
+           //   newRate = rate * (1 - 0.5*lossRate);
+           //   where packetLoss = 256*lossRate;
+           new_bitrate =
+               DataRate::bps((current_bitrate_.bps() *
+                              static_cast<double>(512 - last_fraction_loss_))
+                              /
+                             512.0);
+           has_decreased_since_last_fraction_loss_ = true;
+         }
+       }
+     }
+   } else if (time_since_loss_feedback >
+                  kFeedbackTimeoutIntervals * kMaxRtcpFeedbackInterval &&
+              (last_timeout_.IsInfinite() ||
+               at_time - last_timeout_ > kTimeoutInterval)) {
+     if (in_timeout_experiment_) {
+      //  MS_WARN_TAG(bwe, "Feedback timed out (%s), reducint bitrate",
+      //                      ToString(time_since_loss_feedback).c_str());
+       new_bitrate = new_bitrate * 0.8;
+       // Reset accumulators since we've already acted on missing feedback and
+       // shouldn't to act again on these old lost packets.
+       lost_packets_since_last_loss_update_ = 0;
+       expected_packets_since_last_loss_update_ = 0;
+       last_timeout_ = at_time;
+     }
+   }
+  
+   CapBitrateToThresholds(at_time, new_bitrate);
+#endif
 }
 
 void SendSideBandwidthEstimation::UpdatePropagationRtt(

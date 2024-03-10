@@ -47,7 +47,7 @@ BitrateEstimator::BitrateEstimator(const WebRtcKeyValueConfig* key_value_config)
       prev_time_ms_(-1),
       bitrate_estimate_kbps_(-1.0f),
       bitrate_estimate_var_(50.0f) {
-  // E.g WebRTC-BweThroughputWindowConfig/initial_window_ms:350,window_ms:250/
+  // 例如 WebRTC-BweThroughputWindowConfig/initial_window_ms:350,window_ms:250/
   ParseFieldTrial({&initial_window_ms_, &noninitial_window_ms_,
                    &uncertainty_scale_, &uncertainty_scale_in_alr_,
                    &uncertainty_symmetry_cap_, &estimate_floor_},
@@ -58,24 +58,20 @@ BitrateEstimator::~BitrateEstimator() = default;
 
 void BitrateEstimator::Update(Timestamp at_time, DataSize amount, bool in_alr) {
   int rate_window_ms = noninitial_window_ms_;
-  // We use a larger window at the beginning to get a more stable sample that
-  // we can use to initialize the estimate.
+  // 在开始时使用较大的窗口以获得更稳定的样本，该样本可用于初始化估计值。
   if (bitrate_estimate_kbps_ < 0.f) rate_window_ms = initial_window_ms_;
   float bitrate_sample_kbps =
       UpdateWindow(at_time.ms(), amount.bytes(), rate_window_ms);
   if (bitrate_sample_kbps < 0.0f) return;
   if (bitrate_estimate_kbps_ < 0.0f) {
-    // This is the very first sample we get. Use it to initialize the estimate.
+    // 这是我们得到的第一个样本。使用它来初始化估计值。
     bitrate_estimate_kbps_ = bitrate_sample_kbps;
     return;
   }
-  // Define the sample uncertainty as a function of how far away it is from the
-  // current estimate. With low values of uncertainty_symmetry_cap_ we add more
-  // uncertainty to increases than to decreases. For higher values we approach
-  // symmetry.
+  // 将样本不确定性定义为其与当前估计值相差的函数。对于较低的uncertainty_symmetry_cap_值，我们对增加添加更多的不确定性，而对于减少则较少。对于较高的值，我们接近对称性。
   float scale = uncertainty_scale_;
   if (in_alr && bitrate_sample_kbps < bitrate_estimate_kbps_) {
-    // Optionally use higher uncertainty for samples obtained during ALR.
+    // 可选择在ALR期间获得的样本使用更高的不确定性。
     scale = uncertainty_scale_in_alr_;
   }
   float sample_uncertainty =
@@ -85,10 +81,8 @@ void BitrateEstimator::Update(Timestamp at_time, DataSize amount, bool in_alr) {
                 uncertainty_symmetry_cap_.Get().kbps<float>()));
 
   float sample_var = sample_uncertainty * sample_uncertainty;
-  // Update a bayesian estimate of the rate, weighting it lower if the sample
-  // uncertainty is large.
-  // The bitrate estimate uncertainty is increased with each update to model
-  // that the bitrate changes over time.
+  // 更新比特率的贝叶斯估计，如果样本不确定性较大，则赋予较低的权重。
+  // 每次更新都会增加比特率估计的不确定性，以模拟比特率随时间变化。
   float pred_bitrate_estimate_var = bitrate_estimate_var_ + 5.f;
   bitrate_estimate_kbps_ = (sample_var * bitrate_estimate_kbps_ +
                             pred_bitrate_estimate_var * bitrate_sample_kbps) /
@@ -101,7 +95,7 @@ void BitrateEstimator::Update(Timestamp at_time, DataSize amount, bool in_alr) {
 
 float BitrateEstimator::UpdateWindow(int64_t now_ms, int bytes,
                                      int rate_window_ms) {
-  // Reset if time moves backwards.
+  // 如果时间倒退，则重置。
   if (now_ms < prev_time_ms_) {
     prev_time_ms_ = -1;
     sum_ = 0;
@@ -109,7 +103,7 @@ float BitrateEstimator::UpdateWindow(int64_t now_ms, int bytes,
   }
   if (prev_time_ms_ >= 0) {
     current_window_ms_ += now_ms - prev_time_ms_;
-    // Reset if nothing has been received for more than a full window.
+    // 如果超过一个完整窗口时间没有收到任何数据，则重置。
     if (now_ms - prev_time_ms_ > rate_window_ms) {
       sum_ = 0;
       current_window_ms_ %= rate_window_ms;
@@ -138,9 +132,7 @@ absl::optional<DataRate> BitrateEstimator::PeekRate() const {
 }
 
 void BitrateEstimator::ExpectFastRateChange() {
-  // By setting the bitrate-estimate variance to a higher value we allow the
-  // bitrate to change fast for the next few samples.
+  // 通过提高比特率估计的方差，我们允许比特率在接下来的几个样本中快速变化。
   bitrate_estimate_var_ += 200;
 }
-
 }  // namespace webrtc

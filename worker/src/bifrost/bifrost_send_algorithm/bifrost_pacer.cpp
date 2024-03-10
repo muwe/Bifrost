@@ -27,12 +27,16 @@ const uint32_t InitialPacingGccBitrate =
 uint32_t BifrostPacer::MaxPacingDataLimit =
     700000;  // 当前测试的h264码率平均780kbps，因此限制最大为780
 
+float pacing_gain = 1.0;
+const uint32_t InitialPacingBBrBitrate =
+    30000;  // 配合当前测试的码率一半左右开始探测 30
+
 BifrostPacer::BifrostPacer(uint32_t ssrc, uint32_t flexfec_ssrc,
                            UvLoop* uv_loop, Observer* observer)
     : uv_loop_(uv_loop),
       observer_(observer),
       pacer_timer_interval_(DefaultPacingTimeInterval),
-      pacing_rate_(InitialPacingGccBitrate) {
+      pacing_rate_(InitialPacingBBrBitrate) {
   // 1.数据生产者
 #ifdef USE_FAKE_DATA_PRODUCER
   data_producer_ = std::make_shared<FakeDataProducer>(ssrc);
@@ -87,11 +91,18 @@ void BifrostPacer::SetProtectionMethod(bool enable_fec, bool enable_nack) {
     method = webrtc::media_optimization::kFec;
   }
 
-  loss_prot_logic_->SetMethod(method);
+  if(loss_prot_logic_){
+    loss_prot_logic_->SetMethod(method);
+  }
 }
 
 void BifrostPacer::UpdateFecRates(uint8_t fraction_lost,
                                   int64_t round_trip_time_ms) {
+
+if(loss_prot_logic_ == nullptr){
+  return;
+}
+
   float target_bitrate_kbps =
       static_cast<float>(this->target_bitrate_) / 1000.f;
 
@@ -146,6 +157,7 @@ void BifrostPacer::UpdateFecRates(uint8_t fraction_lost,
   delta_fec_params_.fec_mask_type = webrtc::kFecMaskRandom;
   key_fec_params_.fec_mask_type = webrtc::kFecMaskRandom;
 
+
   // 随便设置一个
   if (flexfec_sender_) {
     flexfec_sender_->SetFecParameters(delta_fec_params_);
@@ -162,7 +174,7 @@ void BifrostPacer::OnTimer(UvTimer* timer) {
         this->pacing_congestion_windows_ < this->bytes_in_flight_) {
     } else {
       int32_t interval_pacing_bytes =
-          int32_t((pacing_rate_ * 1.25 /* 乘上每次间隔码率加减的损失 */ /
+          int32_t((pacing_rate_ * pacing_gain /* 乘上每次间隔码率加减的损失 */ /
                    1000) /* 转换ms */
                   * pacer_timer_interval_ /* 该间隔发送速率 */ /
                   8 /* 转换bytes */) +
@@ -201,7 +213,9 @@ void BifrostPacer::OnTimer(UvTimer* timer) {
   if (timer == create_timer_) {
     delta_fec_params_.fec_rate = 255;
     delta_fec_params_.max_fec_frames = 1;
-    flexfec_sender_->SetFecParameters(delta_fec_params_);
+    if(flexfec_sender_){
+      flexfec_sender_->SetFecParameters(delta_fec_params_);
+    }
     // 每10ms产生3次
     for (int i = 0; i < 5; i++) {
       auto packet = this->data_producer_->CreateData();
@@ -240,5 +254,39 @@ void BifrostPacer::OnTimer(UvTimer* timer) {
     last_pacing_frame_rate_ = count_pacing_frame_rate_;
     count_pacing_frame_rate_ = 0;
   }
+}
+void BifrostPacer::set_pacing_rate(uint32_t pacing_rate) {
+  pacing_rate_ =
+      pacing_rate > MaxPacingDataLimit ? MaxPacingDataLimit : pacing_rate;
+}  // bps
+
+void BifrostPacer::set_pacing_congestion_windows(uint32_t congestion_windows) {
+  pacing_congestion_windows_ = congestion_windows;
+}
+
+void BifrostPacer::set_bytes_in_flight(uint32_t bytes_in_flight) {
+  bytes_in_flight_ = bytes_in_flight;
+}
+
+void BifrostPacer::set_pacing_transfer_time(uint32_t pacing_transfer_time) {
+  pacing_transfer_time_ = pacing_transfer_time;
+}
+
+void BifrostPacer::NackReadyToSendPacket(RtpPacketPtr packet) {
+  ready_send_vec_.push_back(packet);
+}
+
+uint32_t BifrostPacer::get_pacing_packet_count() {
+  auto tmp = pacing_packet_count_;
+  pacing_packet_count_ = 0;
+  return tmp;
+}
+
+uint32_t BifrostPacer::get_pacing_bytes() { 
+  return pacing_bytes_; 
+}
+
+uint32_t BifrostPacer::get_pacing_bitrate_bps() { 
+  return pacing_bitrate_bps_; 
 }
 }  // namespace bifrost

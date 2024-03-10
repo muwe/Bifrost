@@ -95,6 +95,13 @@ class BandwidthSampler {
     ~ConnectionStateOnSentPacket();
   };
 
+  // 处理实际带宽计算的内部方法，而外部方法处理检索和移除|sent_packet|。
+  BandwidthSample OnPacketAcknowledgedInner(
+      Timestamp ack_time,
+      int64_t packet_number,
+      const ConnectionStateOnSentPacket& sent_packet);
+
+private:
   DataSize total_data_sent_; // 连接期间受拥塞控制的总发送数据量。
   DataSize total_data_acked_; // 已经被确认的受拥塞控制的总数据量。
   DataSize total_data_sent_at_last_acked_packet_; // 最后一个被确认的数据包发送时的总发送数据量。
@@ -104,12 +111,7 @@ class BandwidthSampler {
   bool is_app_limited_; // 标记带宽采样器当前是否处于应用受限阶段。
   int64_t end_of_app_limited_phase_; // 将导致采样器退出应用受限阶段的下一个被确认的数据包。
   PacketNumberIndexedQueue<ConnectionStateOnSentPacket> connection_state_map_; // 发送时点的连接状态记录，按数据包编号索引。
-
-  // 处理实际带宽计算的内部方法，而外部方法处理检索和移除|sent_packet|。
-  BandwidthSample OnPacketAcknowledgedInner(
-      Timestamp ack_time,
-      int64_t packet_number,
-      const ConnectionStateOnSentPacket& sent_packet);
+  BandwidthSample bandwidth_sample_; // 当前的带宽样本。
 };
 
 }  // namespace bbr

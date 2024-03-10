@@ -21,11 +21,9 @@
 
 namespace webrtc {
 
-// Computes a bayesian estimate of the throughput given acks containing
-// the arrival time and payload size. Samples which are far from the current
-// estimate or are based on few packets are given a smaller weight, as they
-// are considered to be more likely to have been caused by, e.g., delay spikes
-// unrelated to congestion.
+// 根据包含到达时间和有效载荷大小的确认信息计算吞吐量的贝叶斯估计。
+// 与当前估计值相差较远或基于较少数据包的样本
+// 将被赋予较小的权重，因为它们被认为更有可能是由于与拥塞无关的延迟峰值等原因造成的。
 class BitrateEstimator {
  public:
   explicit BitrateEstimator(const WebRtcKeyValueConfig* key_value_config);

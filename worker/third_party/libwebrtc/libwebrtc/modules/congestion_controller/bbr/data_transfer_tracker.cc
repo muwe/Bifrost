@@ -49,14 +49,14 @@ DataTransferTracker::Result DataTransferTracker::GetRatesByAckTime(
     Timestamp covered_start,
     Timestamp including_end) {
   Result res;
-  // Last sample before covered_start.
+  // covered_start 之前的最后一个样本。
   const Sample* window_begin = nullptr;
-  // Sample at end time or first sample after end time-
+  // 结束时间的样本或结束时间之后的第一个样本。
   const Sample* window_end = nullptr;
-  // To handle the case when the first sample is after covered_start.
+  // 处理第一个样本在 covered_start 之后的情况。
   if (samples_.front().ack_time < including_end)
     window_begin = &samples_.front();
-  // To handle the case when the last sample is before including_end.
+  // 处理最后一个样本在 including_end 之前的情况。
   if (samples_.back().ack_time > covered_start)
     window_end = &samples_.back();
   for (const auto& sample : samples_) {

@@ -22,9 +22,15 @@ BandwidthSampler::BandwidthSampler()
       last_sent_packet_(0), // 最后一个发送的数据包编号
       is_app_limited_(false), // 应用限制状态初始化为false
       end_of_app_limited_phase_(0), // 应用限制阶段的结束初始化为0
-      connection_state_map_() {} // 连接状态映射初始化为空
+      connection_state_map_() { // 连接状态映射初始化为空
 
-BandwidthSampler::~BandwidthSampler() {}
+      RTC_LOG(LS_INFO) << "RTC_LOG::BandwidthSampler.";
+} 
+
+BandwidthSampler::~BandwidthSampler() {
+      RTC_LOG(LS_INFO) << "~RTC_LOG::BandwidthSampler.";
+
+}
 
 // 当一个数据包被发送时调用，记录数据包信息并更新发送统计。
 void BandwidthSampler::OnPacketSent(Timestamp sent_time,
@@ -52,6 +58,19 @@ void BandwidthSampler::OnPacketSent(Timestamp sent_time,
 
   // 尝试将数据包信息插入到连接状态映射中，如果失败则记录警告日志。
   bool success = connection_state_map_.Emplace(packet_number, sent_time, data_size, *this);
+  // RTC_LOG(LS_INFO) << "BandwidthSampler OnPacketSent " 
+  //                     << " ,success:" << rtc::ToString(success)
+  //                     << " ,bandwidth:" << rtc::ToString(bandwidth_sample_.bandwidth.bps()) << " bps"
+  //                     << " ,rtt:" << rtc::ToString(bandwidth_sample_.rtt.ms()) << " ms"
+  //                     << " ,is_app_limited:" << rtc::ToString(bandwidth_sample_.is_app_limited)
+  //                     << " ,total_data_sent_last ack:" << rtc::ToString(total_data_sent_at_last_acked_packet_.bytes()) << " bytes"
+  //                     << " ,total_data_sent:" << rtc::ToString(total_data_sent_.bytes()) << " bytes"
+  //                     << " ,total_data_acked:" << rtc::ToString(total_data_acked_.bytes()) << "bytes"
+  //                     << " ,packet_number" << rtc::ToString(packet_number)
+  //                     << " ,packet numbers " << rtc::ToString(connection_state_map_.number_of_present_entries())
+  //                     ;
+  ;
+
   if (!success)
     RTC_LOG(LS_WARNING) << "BandwidthSampler failed to insert the packet "
                            "into the map, most likely because it's already "
@@ -66,7 +85,20 @@ BandwidthSample BandwidthSampler::OnPacketAcknowledged(Timestamp ack_time,
     return BandwidthSample(); // 如果找不到数据包信息，返回空的带宽样本
   }
   BandwidthSample sample = OnPacketAcknowledgedInner(ack_time, packet_number, *sent_packet_pointer);
+  bandwidth_sample_ = sample;
   connection_state_map_.Remove(packet_number); // 从映射中移除已确认的数据包
+
+  // RTC_LOG(LS_INFO) << "BandwidthSampler OnPacketAcknowledged " 
+  //                     << " ,bandwidth:" << rtc::ToString(bandwidth_sample_.bandwidth.bps()) << " bps"
+  //                     << " ,rtt:" << rtc::ToString(bandwidth_sample_.rtt.ms()) << " ms"
+  //                     << " ,is_app_limited:" << rtc::ToString(bandwidth_sample_.is_app_limited)
+  //                     << " ,total_data_sent_last ack:" << rtc::ToString(total_data_sent_at_last_acked_packet_.bytes()) << " bytes"
+  //                     << " ,total_data_sent:" << rtc::ToString(total_data_sent_.bytes()) << " bytes"
+  //                     << " ,total_data_acked:" << rtc::ToString(total_data_acked_.bytes()) << "bytes"
+  //                     << " ,packet_number " << rtc::ToString(packet_number)
+  //                     << " ,packet numbers " << rtc::ToString(connection_state_map_.number_of_present_entries())
+  //                     ;
+
   return sample; // 返回计算得到的带宽样本
 }
 

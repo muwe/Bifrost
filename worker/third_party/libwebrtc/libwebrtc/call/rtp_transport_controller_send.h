@@ -103,7 +103,7 @@ class RtpTransportControllerSend final
   void OnReceivedRtcpReceiverReportBlocks(const ReportBlockList& report_blocks,
                                           int64_t now_ms);
   void PostUpdates(NetworkControlUpdate update);
-  void UpdateControlState();
+  void UpdateControlState(NetworkControlUpdate& network_update);
 
   bifrost::UvLoop* loop_;
 

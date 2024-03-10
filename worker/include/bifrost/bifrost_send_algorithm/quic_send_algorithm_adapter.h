@@ -56,6 +56,8 @@ class QuicSendAlgorithmAdapter : public BifrostSendAlgorithmInterface {
     return result;
   }
 
+  uint32_t get_avalibale_bitrate() override {assert(0);}
+
  private:
   void OnReceiveQuicAckFeedback(QuicAckFeedbackPacket* feedback);
   void RemoveOldSendPacket();

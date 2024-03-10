@@ -20,63 +20,61 @@
 #include "rtc_base/logging.h"
 #include "system_wrappers/include/field_trial.h"
 
+
+
 namespace webrtc {
 namespace bbr {
 namespace {
 
-// If greater than zero, mean RTT variation is multiplied by the specified
-// factor and added to the congestion window limit.
+// 如果大于零，平均 RTT 变化乘以指定的因子并加到拥塞窗口限制上。
 const double kBbrRttVariationWeight = 0.0f;
 
-// Congestion window gain for QUIC BBR during PROBE_BW phase.
+// QUIC BBR 在 PROBE_BW 阶段的拥塞窗口增益。
 const double kProbeBWCongestionWindowGain = 2.0f;
 
-// The maximum packet size of any QUIC packet, based on ethernet's max size,
-// minus the IP and UDP headers. IPv6 has a 40 byte header, UDP adds an
-// additional 8 bytes.  This is a total overhead of 48 bytes.  Ethernet's
-// max packet size is 1500 bytes,  1500 - 48 = 1452.
+// 任何 QUIC 数据包的最大包大小，基于以太网的最大大小，
+// 减去 IP 和 UDP 头部。IPv6 有一个 40 字节的头部，UDP 再增加 8 字节。
+// 这是总共 48 字节的开销。以太网的最大包大小是 1500 字节，1500 - 48 = 1452。
 const DataSize kMaxPacketSize = DataSize::bytes(1452);
 
-// Default maximum packet size used in the Linux TCP implementation.
-// Used in QUIC for congestion window computations in bytes.
+// Linux TCP 实现中使用的默认最大包大小。
+// 在 QUIC 中用于字节单位的拥塞窗口计算。
 const DataSize kDefaultTCPMSS = DataSize::bytes(1460);
-// Constants based on TCP defaults.
+// 基于 TCP 默认值的常量。
 const DataSize kMaxSegmentSize = kDefaultTCPMSS;
 
-// The gain used for the slow start, equal to 2/ln(2).
+// 慢启动使用的增益，等于 2/ln(2)。
 const double kHighGain = 2.885f;
-// The gain used in STARTUP after loss has been detected.
-// 1.5 is enough to allow for 25% exogenous loss and still observe a 25% growth
-// in measured bandwidth.
+// 在检测到丢失后 STARTUP 阶段使用的增益。
+// 1.5 足以允许 25% 的外部丢失并且仍然观察到测量带宽的 25% 增长。
 const double kStartupAfterLossGain = 1.5;
-// The gain used to drain the queue after the slow start.
+// 慢启动后排空队列使用的增益。
 const double kDrainGain = 1.f / kHighGain;
 
-// The length of the gain cycle.
+// 增益周期的长度。
 const size_t kGainCycleLength = 8;
-// The size of the bandwidth filter window, in round-trips.
+// 带宽滤波器窗口的大小，以往返次数计。
 const BbrRoundTripCount kBandwidthWindowSize = kGainCycleLength + 2;
 
-// The time after which the current min_rtt value expires.
+// 当前 min_rtt 值过期的时间。
 constexpr int64_t kMinRttExpirySeconds = 10;
-// The minimum time the connection can spend in PROBE_RTT mode.
+// 连接在 PROBE_RTT 模式下花费的最短时间。
 constexpr int64_t kProbeRttTimeMs = 200;
-// If the bandwidth does not increase by the factor of |kStartupGrowthTarget|
-// within |kRoundTripsWithoutGrowthBeforeExitingStartup| rounds, the connection
-// will exit the STARTUP mode.
+// 如果带宽在 |kRoundTripsWithoutGrowthBeforeExitingStartup| 轮内没有增长到 |kStartupGrowthTarget| 的因子，
+// 连接将退出 STARTUP 模式。
 const double kStartupGrowthTarget = 1.25;
-// Coefficient to determine if a new RTT is sufficiently similar to min_rtt that
-// we don't need to enter PROBE_RTT.
+// 系数，用于确定新的 RTT 是否与 min_rtt 足够相似，以致我们不需要进入 PROBE_RTT。
 const double kSimilarMinRttThreshold = 1.125;
 
 constexpr int64_t kInitialBandwidthKbps = 300;
 
 const int64_t kInitialCongestionWindowPackets = 32;
-// The minimum CWND to ensure delayed acks don't reduce bandwidth measurements.
-// Does not inflate the pacing rate.
-const int64_t kDefaultMinCongestionWindowPackets = 4;
+// 保证延迟确认不会降低带宽测量的最小 CWND。
+// 不会增加发送速率。
+const int64_t kDefaultMinCongestionWindowPackets = 20;//4;
 const int64_t kDefaultMaxCongestionWindowPackets = 2000;
 
+const TimeDelta kTargetMinRtt = TimeDelta::ms(50);
 const char kBbrConfigTrial[] = "WebRTC-BweBbrConfig";
 
 }  // namespace
@@ -169,7 +167,7 @@ BbrNetworkController::DebugState::DebugState(const BbrNetworkController& sender)
       recovery_state(sender.recovery_state_),
       recovery_window(sender.recovery_window_),
       last_sample_is_app_limited(sender.last_sample_is_app_limited_),
-      end_of_app_limited_phase(sender.sampler_->end_of_app_limited_phase()) {}
+      end_of_app_limited_phase(sender.sampler_.end_of_app_limited_phase()) {}
 
 BbrNetworkController::DebugState::DebugState(const DebugState& state) = default;
 
@@ -179,7 +177,7 @@ BbrNetworkController::BbrNetworkController(NetworkControllerConfig config)
       random_(10),
       loss_rate_(),
       mode_(STARTUP),
-      sampler_(new BandwidthSampler()),
+      // sampler_(new BandwidthSampler()),
       round_trip_count_(0),
       last_sent_packet_(0),
       current_round_trip_end_(0),
@@ -215,14 +213,19 @@ BbrNetworkController::BbrNetworkController(NetworkControllerConfig config)
       recovery_window_(max_congestion_window_),
       app_limited_since_last_probe_rtt_(false),
       min_rtt_since_last_probe_rtt_(TimeDelta::PlusInfinity()) {
-  RTC_LOG(LS_INFO) << "Creating BBR controller";
+  RTC_LOG(LS_INFO) << "RTC::Creating BBR controller";
+
   if (config.constraints.starting_rate)
     default_bandwidth_ = *config.constraints.starting_rate;
   constraints_ = config.constraints;
   Reset();
 }
 
-BbrNetworkController::~BbrNetworkController() {}
+BbrNetworkController::~BbrNetworkController() {
+
+  RTC_LOG(LS_INFO) << "~RTC::BbrNetworkController";
+
+}
 
 void BbrNetworkController::Reset() {
   round_trip_count_ = 0;
@@ -269,11 +272,10 @@ NetworkControlUpdate BbrNetworkController::CreateRateUpdate(
   target_rate_msg.network_estimate.at_time = at_time;
   target_rate_msg.network_estimate.round_trip_time = rtt;
 
-  // TODO(srte): Fill in field below with proper value.
+  // TODO(srte): 使用正确的值填充下面的字段。
   target_rate_msg.network_estimate.loss_rate_ratio = 0;
-  // In in PROBE_BW, target bandwidth is expected to vary over the cycle period.
-  // In other modes the is no given period, therefore the same value as in
-  // PROBE_BW is used for consistency.
+  // 在 PROBE_BW 模式中，目标带宽预计会在周期内变化。
+  // 在其他模式中没有给定的周期，因此为了一致性，使用与 PROBE_BW 相同的值。
   target_rate_msg.network_estimate.bwe_period =
       rtt * static_cast<int64_t>(kGainCycleLength);
 
@@ -282,19 +284,44 @@ NetworkControlUpdate BbrNetworkController::CreateRateUpdate(
   update.target_rate = target_rate_msg;
 
   PacerConfig pacer_config;
-  // A small time window ensures an even pacing rate.
+  // 一个小的时间窗口确保了均匀的发送速率。
   pacer_config.time_window = rtt * 0.25;
   pacer_config.data_window = pacer_config.time_window * pacing_rate;
 
-  if (IsProbingForMoreBandwidth())
+
+  pacer_config.local_data_rate = pacing_rate;
+
+  if (IsProbingForMoreBandwidth()) {
     pacer_config.pad_window = pacer_config.data_window;
-  else
+    pacer_config.local_pad_rate = pacer_config.local_data_rate;
+  }
+  else {
     pacer_config.pad_window = DataSize::Zero();
+    pacer_config.local_pad_rate = DataRate::Zero();
+
+  }
+
 
   pacer_config.at_time = at_time;
   update.pacer_config = pacer_config;
 
   update.congestion_window = GetCongestionWindow();
+
+  // RTC_LOG(LS_INFO) << " bbr CreateRateUpdate" 
+  //                 // 打印实时数据
+  //           << " ,min rtt=" << rtc::ToString(rtt.ms()) << " ms"
+  //           << " ,local pacing_rate=" << rtc::ToString(pacing_rate.bps())   << " bps"
+  //           << " ,local target_rate=" << rtc::ToString(target_rate.bps())   << " bps"
+  //           << " ,target_rate=" << rtc::ToString(update.target_rate->target_rate.bps()) << " bps"
+  //           << " ,data_rate=" << rtc::ToString(update.pacer_config->data_rate().bps())   << " bps"
+  //           << " ,pad_rate=" << rtc::ToString(update.pacer_config->pad_rate().bps())  << " bps"
+  //           << " ,data_window=" << rtc::ToString(update.pacer_config->data_window.bytes())  << " bytes"
+  //           << " ,pad_window=" << rtc::ToString(update.pacer_config->pad_window.bytes())  << " bytes"
+  //           << " ,time_window=" << rtc::ToString(update.pacer_config->time_window.ms())  << " ms"
+  //           << " ,congestion_window=" << rtc::ToString(update.congestion_window->bytes())  << " bytes"
+  //           ;
+
+
   return update;
 }
 
@@ -338,7 +365,7 @@ bool BbrNetworkController::InSlowStart() const {
 NetworkControlUpdate BbrNetworkController::OnSentPacket(SentPacket msg) {
   last_sent_packet_ = msg.sequence_number;
 
-  if (msg.data_in_flight.IsZero() && sampler_->is_app_limited()) {
+  if (msg.data_in_flight.IsZero() && sampler_.is_app_limited()) {
     exiting_quiescence_ = true;
   }
 
@@ -346,7 +373,7 @@ NetworkControlUpdate BbrNetworkController::OnSentPacket(SentPacket msg) {
     aggregation_epoch_start_time_ = msg.send_time;
   }
 
-  sampler_->OnPacketSent(msg.send_time, msg.sequence_number, msg.size,
+  sampler_.OnPacketSent(msg.send_time, msg.sequence_number, msg.size,
                          msg.data_in_flight);
   return NetworkControlUpdate();
 }
@@ -408,7 +435,7 @@ NetworkControlUpdate BbrNetworkController::OnTransportPacketsFeedback(
   TimeDelta send_delta = feedback_recv_time - send_time;
   rtt_stats_.UpdateRtt(send_delta, TimeDelta::Zero(), feedback_recv_time);
 
-  const DataSize total_data_acked_before = sampler_->total_data_acked();
+  const DataSize total_data_acked_before = sampler_.total_data_acked();
 
   bool is_round_start = false;
   bool min_rtt_expired = false;
@@ -424,7 +451,7 @@ NetworkControlUpdate BbrNetworkController::OnTransportPacketsFeedback(
   loss_rate_.UpdateWithLossStatus(msg.feedback_time.ms(), packets_sent,
                                   packets_lost);
 
-  // Input the new data into the BBR model of the connection.
+  // 将新数据输入到 BBR 模型中。
   if (!acked_packets.empty()) {
     int64_t last_acked_packet =
         acked_packets.rbegin()->sent_packet.sequence_number;
@@ -436,7 +463,7 @@ NetworkControlUpdate BbrNetworkController::OnTransportPacketsFeedback(
                         is_round_start);
 
     const DataSize data_acked =
-        sampler_->total_data_acked() - total_data_acked_before;
+        sampler_.total_data_acked() - total_data_acked_before;
 
     UpdateAckAggregationBytes(msg.feedback_time, data_acked);
     if (max_aggregation_bytes_multiplier_ > 0) {
@@ -449,38 +476,81 @@ NetworkControlUpdate BbrNetworkController::OnTransportPacketsFeedback(
     }
   }
 
-  // Handle logic specific to PROBE_BW mode.
+  // 处理 PROBE_BW 模式特有的逻辑。
   if (mode_ == PROBE_BW) {
     UpdateGainCyclePhase(msg.feedback_time, msg.prior_in_flight,
                          !lost_packets.empty());
   }
 
-  // Handle logic specific to STARTUP and DRAIN modes.
+  // 处理 STARTUP 和 DRAIN 模式特有的逻辑。
   if (is_round_start && !is_at_full_bandwidth_) {
     CheckIfFullBandwidthReached();
   }
   MaybeExitStartupOrDrain(msg);
 
-  // Handle logic specific to PROBE_RTT.
+  // 处理 PROBE_RTT 特有的逻辑。
   MaybeEnterOrExitProbeRtt(msg, is_round_start, min_rtt_expired);
 
-  // Calculate number of packets acked and lost.
-  DataSize data_acked = sampler_->total_data_acked() - total_data_acked_before;
+  // 计算确认和丢失的数据包数量。
+  DataSize data_acked = sampler_.total_data_acked() - total_data_acked_before;
   DataSize data_lost = DataSize::Zero();
   for (const PacketResult& packet : lost_packets) {
     data_lost += packet.sent_packet.size;
   }
 
-  // After the model is updated, recalculate the pacing rate and congestion
-  // window.
+  // 在模型更新后，重新计算发送速率和拥塞窗口。
   CalculatePacingRate();
   CalculateCongestionWindow(data_acked);
   CalculateRecoveryWindow(data_acked, data_lost, msg.data_in_flight);
-  // Cleanup internal state.
+  // 清理内部状态。
   if (!acked_packets.empty()) {
-    sampler_->RemoveObsoletePackets(
+    sampler_.RemoveObsoletePackets(
         acked_packets.back().sent_packet.sequence_number);
   }
+      // RTC_LOG(LS_INFO) << "Exiting startup due to rtt increase from: "
+      //                  << ToString(max_bandwidth_.GetBest()) << " to:" << ToString(last_rtt_)
+      //                  << " > " << ToString(min_rtt_ + exit_threshold);
+
+
+  RTC_LOG(LS_INFO) << " bbrbw " 
+                  // 打印实时数据
+                  // << " bandwidth 1first " << ToString(max_bandwidth_.GetBest()) << " bps "
+                  // << " bandwidth 2first " << ToString(max_bandwidth_.GetSecondBest()) << " bps " 
+                  // << " bandwidth 3first " << ToString(max_bandwidth_.GetThirdBest()) << " bps "
+                  // 打印带宽
+                  << " ,bandw first " << rtc::ToString(max_bandwidth_.GetBest().bps()) << " bps "
+                  // << " ,bandw sec " << ToString(max_bandwidth_.GetSecondBest()) << " bps " 
+                  // << " ,bandw third " << ToString(max_bandwidth_.GetThirdBest()) << " bps "
+                  // 打印rtt
+                  << " ,sm_rtt " << rtc::ToString(rtt_stats_.smoothed_rtt().ms()) << " ms"
+                  << " ,pre_srtt " << rtc::ToString(rtt_stats_.previous_srtt().ms()) << " ms"
+                  << " ,latest_rtt " << rtc::ToString(rtt_stats_.latest_rtt().ms()) << " ms"
+                  << " ,min_rtt " << rtc::ToString(rtt_stats_.min_rtt().ms()) << " ms"
+                  // 打印丢包
+                  << " ,loss rate " << rtc::ToString(loss_rate_.GetLossRate()) << " %"
+                  // 打印拥塞窗口
+                  << " ,1 bdp " << rtc::ToString((min_rtt_*max_bandwidth_.GetBest()).bytes())  << " bytes "
+                  << " ,con_win_gain " << rtc::ToString(congestion_window_gain_)
+                  << " ,con_win " << rtc::ToString(congestion_window_.bytes()) << " bytes"
+                  << " ,min con_win " << rtc::ToString(min_congestion_window_.bytes()) << " bytes"
+                  << " ,max con_win " << rtc::ToString(max_congestion_window_.bytes()) << " bytes"
+                  // 打印发送速率
+                  << " ,is_full_bandwith " << rtc::ToString(is_at_full_bandwidth_)
+                  << " ,pace_rate " << rtc::ToString(pacing_rate_.bps())  << " bps "
+                  << " ,pace_gain " << rtc::ToString(pacing_gain_)
+                  << " ,prior_in_flight " << rtc::ToString(msg.prior_in_flight.bytes())  << " bytes "
+                  << " ,lost_packets " << rtc::ToString(lost_packets.size())
+                  // data in flight
+                  // << " ,data_sent " << rtc::ToString(msg.data_sent.bytes())  << " bytes"
+                  << " ,data_acked " << rtc::ToString(data_acked.bytes())  << " bytes"
+                  << " ,data_in_flight " << rtc::ToString(msg.data_in_flight.bytes())  << " bytes"
+                  // 打印模式
+                  << " ,mode_ " << mode_
+                  << " ,round_count " << round_trip_count_
+                  ;
+
+
+  
   return CreateRateUpdate(msg.feedback_time);
 }
 
@@ -513,7 +583,9 @@ TimeDelta BbrNetworkController::GetMinRtt() const {
 }
 
 DataSize BbrNetworkController::GetTargetCongestionWindow(double gain) const {
-  DataSize bdp = GetMinRtt() * BandwidthEstimate();
+  TimeDelta min_rtt = GetMinRtt();
+  min_rtt = std::max(min_rtt,kTargetMinRtt);
+  DataSize bdp = min_rtt * BandwidthEstimate();
   DataSize congestion_window = gain * bdp;
 
   // BDP estimate will be zero if no bandwidth samples are available yet.
@@ -541,9 +613,7 @@ void BbrNetworkController::EnterProbeBandwidthMode(Timestamp now) {
   mode_ = PROBE_BW;
   congestion_window_gain_ = congestion_window_gain_constant_;
 
-  // Pick a random offset for the gain cycle out of {0, 2..7} range. 1 is
-  // excluded because in that case increased gain and decreased gain would not
-  // follow each other.
+  // 从 {0, 2..7} 范围中随机选择一个增益周期的偏移量。1 被排除在外，因为在那种情况下，增加的增益和减少的增益不会相继发生。
   cycle_current_offset_ = random_.Rand(kGainCycleLength - 2);
   if (cycle_current_offset_ >= 1) {
     cycle_current_offset_ += 1;
@@ -556,7 +626,7 @@ void BbrNetworkController::EnterProbeBandwidthMode(Timestamp now) {
 void BbrNetworkController::DiscardLostPackets(
     const std::vector<PacketResult>& lost_packets) {
   for (const PacketResult& packet : lost_packets) {
-    sampler_->OnPacketLost(packet.sent_packet.sequence_number);
+    sampler_.OnPacketLost(packet.sent_packet.sequence_number);
   }
 }
 
@@ -576,32 +646,35 @@ bool BbrNetworkController::UpdateBandwidthAndMinRtt(
   TimeDelta sample_rtt = TimeDelta::PlusInfinity();
   for (const auto& packet : acked_packets) {
     BandwidthSample bandwidth_sample =
-        sampler_->OnPacketAcknowledged(now, packet.sent_packet.sequence_number);
+        sampler_.OnPacketAcknowledged(now, packet.sent_packet.sequence_number);
     last_sample_is_app_limited_ = bandwidth_sample.is_app_limited;
     if (!bandwidth_sample.rtt.IsZero()) {
       sample_rtt = std::min(sample_rtt, bandwidth_sample.rtt);
     }
 
+    // 如果样本不受应用程序限制或带宽大于当前带宽估计，则更新最大带宽。
     if (!bandwidth_sample.is_app_limited ||
         bandwidth_sample.bandwidth > BandwidthEstimate()) {
       max_bandwidth_.Update(bandwidth_sample.bandwidth, round_trip_count_);
     }
   }
 
-  // If none of the RTT samples are valid, return immediately.
+  // 如果没有有效的 RTT 样本，则立即返回。
   if (sample_rtt.IsInfinite()) {
     return false;
   }
 
+  // 更新最近的 RTT 和自上次探测 RTT 以来的最小 RTT。
   last_rtt_ = sample_rtt;
   min_rtt_since_last_probe_rtt_ =
       std::min(min_rtt_since_last_probe_rtt_, sample_rtt);
 
+  // 检查最小 RTT 是否过期。
   const TimeDelta kMinRttExpiry = TimeDelta::seconds(kMinRttExpirySeconds);
-  // Do not expire min_rtt if none was ever available.
   bool min_rtt_expired =
       !min_rtt_.IsZero() && (now > (min_rtt_timestamp_ + kMinRttExpiry));
 
+  // 更新最小 RTT 和相关时间戳。
   if (min_rtt_expired || sample_rtt < min_rtt_ || min_rtt_.IsZero()) {
     if (ShouldExtendMinRttExpiry()) {
       min_rtt_expired = false;
@@ -609,7 +682,7 @@ bool BbrNetworkController::UpdateBandwidthAndMinRtt(
       min_rtt_ = sample_rtt;
     }
     min_rtt_timestamp_ = now;
-    // Reset since_last_probe_rtt fields.
+    // 重置自上次探测 RTT 以来的相关字段。
     min_rtt_since_last_probe_rtt_ = TimeDelta::PlusInfinity();
     app_limited_since_last_probe_rtt_ = false;
   }
@@ -618,19 +691,17 @@ bool BbrNetworkController::UpdateBandwidthAndMinRtt(
 }
 
 bool BbrNetworkController::ShouldExtendMinRttExpiry() const {
+  // 如果最近受到应用程序限制，则延长当前的最小 RTT。
   if (config_.probe_rtt_disabled_if_app_limited &&
       app_limited_since_last_probe_rtt_) {
-    // Extend the current min_rtt if we've been app limited recently.
     return true;
   }
+  // 如果自上次探测 RTT 以来的最小 RTT 增加了，则延长当前的最小 RTT。
   const bool min_rtt_increased_since_last_probe =
       min_rtt_since_last_probe_rtt_ > min_rtt_ * kSimilarMinRttThreshold;
   if (config_.probe_rtt_skipped_if_similar_rtt &&
       app_limited_since_last_probe_rtt_ &&
       !min_rtt_increased_since_last_probe) {
-    // Extend the current min_rtt if we've been app limited recently and an rtt
-    // has been measured in that time that's less than 12.5% more than the
-    // current min_rtt.
     return true;
   }
   return false;
@@ -639,32 +710,28 @@ bool BbrNetworkController::ShouldExtendMinRttExpiry() const {
 void BbrNetworkController::UpdateGainCyclePhase(Timestamp now,
                                                 DataSize prior_in_flight,
                                                 bool has_losses) {
-  // In most cases, the cycle is advanced after an RTT passes.
+  // 在大多数情况下，周期在一个 RTT 后推进。
   bool should_advance_gain_cycling = now - last_cycle_start_ > GetMinRtt();
 
-  // If the pacing gain is above 1.0, the connection is trying to probe the
-  // bandwidth by increasing the number of bytes in flight to at least
-  // pacing_gain * BDP.  Make sure that it actually reaches the target, as long
-  // as there are no losses suggesting that the buffers are not able to hold
-  // that much.
+  // 如果发送增益大于 1.0，则连接试图通过增加在途字节量至少达到 pacing_gain * BDP 来探测带宽。
+  // 确保实际达到目标，只要没有丢失表明缓冲区无法容纳那么多数据。
   if (pacing_gain_ > 1.0 && !has_losses &&
       prior_in_flight < GetTargetCongestionWindow(pacing_gain_)) {
     should_advance_gain_cycling = false;
   }
 
-  // If pacing gain is below 1.0, the connection is trying to drain the extra
-  // queue which could have been incurred by probing prior to it.  If the number
-  // of bytes in flight falls down to the estimated BDP value earlier, conclude
-  // that the queue has been successfully drained and exit this cycle early.
+  // 如果发送增益小于 1.0，则连接试图排空之前探测时可能产生的额外队列。
+  // 如果在途字节量提前降至估计的 BDP 值，则认为队列已成功排空，并提前结束此周期。
   if (pacing_gain_ < 1.0 && prior_in_flight <= GetTargetCongestionWindow(1)) {
     should_advance_gain_cycling = true;
   }
 
+  // 推进增益周期。
   if (should_advance_gain_cycling) {
     cycle_current_offset_ = (cycle_current_offset_ + 1) % kGainCycleLength;
     last_cycle_start_ = now;
-    // Stay in low gain mode until the target BDP is hit.
-    // Low gain mode will be exited immediately when the target BDP is achieved.
+    // 保持低增益模式直到达到目标 BDP。
+    // 当达到目标 BDP 时立即退出低增益模式。
     if (config_.fully_drain_queue && pacing_gain_ < 1 &&
         GetPacingGain(cycle_current_offset_) == 1 &&
         prior_in_flight > GetTargetCongestionWindow(1)) {
@@ -719,19 +786,17 @@ void BbrNetworkController::MaybeEnterOrExitProbeRtt(
   if (min_rtt_expired && !exiting_quiescence_ && mode_ != PROBE_RTT) {
     mode_ = PROBE_RTT;
     pacing_gain_ = 1;
-    // Do not decide on the time to exit PROBE_RTT until the |bytes_in_flight|
-    // is at the target small value.
+    // 不要决定退出 PROBE_RTT 的时间，直到 |bytes_in_flight| 达到目标小值。
     exit_probe_rtt_at_.reset();
   }
 
   if (mode_ == PROBE_RTT) {
-    sampler_->OnAppLimited();
+    sampler_.OnAppLimited();
 
     if (!exit_probe_rtt_at_) {
-      // If the window has reached the appropriate size, schedule exiting
-      // PROBE_RTT.  The CWND during PROBE_RTT is kMinimumCongestionWindow, but
-      // we allow an extra packet since QUIC checks CWND before sending a
-      // packet.
+      // 如果窗口已达到适当大小，则计划退出 PROBE_RTT。
+      // PROBE_RTT 期间的 CWND 是 kMinimumCongestionWindow，但我们允许额外的一个数据包，
+      // 因为 QUIC 在发送数据包之前检查 CWND。
       if (msg.data_in_flight < ProbeRttCongestionWindow() + kMaxPacketSize) {
         exit_probe_rtt_at_ =
             msg.feedback_time + TimeDelta::ms(kProbeRttTimeMs);
@@ -758,24 +823,22 @@ void BbrNetworkController::MaybeEnterOrExitProbeRtt(
 void BbrNetworkController::UpdateRecoveryState(int64_t last_acked_packet,
                                                bool has_losses,
                                                bool is_round_start) {
-  // Exit recovery when there are no losses for a round.
+  // 当一个轮次中没有损失时退出恢复。
   if (has_losses) {
     end_recovery_at_ = last_sent_packet_;
   }
 
   switch (recovery_state_) {
     case NOT_IN_RECOVERY:
-      // Enter conservation on the first loss.
+      // 在第一次损失时进入保守模式。
       if (has_losses) {
         recovery_state_ = CONSERVATION;
         if (mode_ == STARTUP) {
           recovery_state_ = config_.initial_conservation_in_startup;
         }
-        // This will cause the |recovery_window_| to be set to the correct
-        // value in CalculateRecoveryWindow().
+        // 这将导致在 CalculateRecoveryWindow() 中将 |recovery_window_| 设置为正确的值。
         recovery_window_ = DataSize::Zero();
-        // Since the conservation phase is meant to be lasting for a whole
-        // round, extend the current round as if it were started right now.
+        // 由于保守阶段意味着持续一个完整的轮次，因此延长当前轮次，就像它现在才开始一样。
         current_round_trip_end_ = last_sent_packet_;
       }
       break;
@@ -787,7 +850,7 @@ void BbrNetworkController::UpdateRecoveryState(int64_t last_acked_packet,
       }
       ABSL_FALLTHROUGH_INTENDED;
     case GROWTH:
-      // Exit recovery if appropriate.
+      // 如果适当，则退出恢复。
       if (!has_losses &&
           (!end_recovery_at_ || last_acked_packet > *end_recovery_at_)) {
         recovery_state_ = NOT_IN_RECOVERY;
@@ -806,21 +869,19 @@ void BbrNetworkController::UpdateAckAggregationBytes(
     RTC_DCHECK(aggregation_epoch_start_time_.has_value());
     return;
   }
-  // Compute how many bytes are expected to be delivered, assuming max bandwidth
-  // is correct.
+  // 计算在假设最大带宽正确的情况下预期会被确认的字节数。
   DataSize expected_bytes_acked =
       max_bandwidth_.GetBest() * (ack_time - *aggregation_epoch_start_time_);
-  // Reset the current aggregation epoch as soon as the ack arrival rate is less
-  // than or equal to the max bandwidth.
+  // 一旦确认到达速率小于或等于最大带宽，就重置当前聚合时代。
   if (aggregation_epoch_bytes_ <= expected_bytes_acked) {
-    // Reset to start measuring a new aggregation epoch.
+    // 重置以开始测量新的聚合时代。
     aggregation_epoch_bytes_ = newly_acked_bytes;
     aggregation_epoch_start_time_ = ack_time;
     return;
   }
 
-  // Compute how many extra bytes were delivered vs max bandwidth.
-  // Include the bytes most recently acknowledged to account for stretch acks.
+  // 计算与最大带宽相比额外交付的字节数。
+  // 包括最近确认的字节以考虑延伸的确认。
   aggregation_epoch_bytes_ += newly_acked_bytes;
   max_ack_height_.Update(aggregation_epoch_bytes_ - expected_bytes_acked,
                          round_trip_count_);
@@ -831,6 +892,9 @@ void BbrNetworkController::CalculatePacingRate() {
     return;
   }
 
+  // added by weiqing.ywq
+  DataRate start_rate = DataRate::bps(100000);//bps
+
   DataRate target_rate = pacing_gain_ * BandwidthEstimate();
   if (config_.rate_based_recovery && InRecovery()) {
     pacing_rate_ = pacing_gain_ * max_bandwidth_.GetThirdBest();
@@ -840,20 +904,20 @@ void BbrNetworkController::CalculatePacingRate() {
     return;
   }
 
-  // Pace at the rate of initial_window / RTT as soon as RTT measurements are
-  // available.
+  // 一旦 RTT 测量可用，就以 initial_window / RTT 的速率发送。
   if (pacing_rate_.IsZero() && !rtt_stats_.min_rtt().IsZero()) {
-    pacing_rate_ = initial_congestion_window_ / rtt_stats_.min_rtt();
+    // pacing_rate_ = initial_congestion_window_ / rtt_stats_.min_rtt();
+    pacing_rate_ = start_rate;
     return;
   }
-  // Slow the pacing rate in STARTUP once loss has ever been detected.
+  // 一旦检测到丢包，就在 STARTUP 期间减慢发送速率。
   const bool has_ever_detected_loss = end_recovery_at_.has_value();
   if (config_.slower_startup && has_ever_detected_loss) {
     pacing_rate_ = kStartupAfterLossGain * BandwidthEstimate();
     return;
   }
 
-  // Do not decrease the pacing rate during the startup.
+  // 在启动期间不降低发送速率。
   pacing_rate_ = std::max(pacing_rate_, target_rate);
 }
 
@@ -868,9 +932,8 @@ void BbrNetworkController::CalculateCongestionWindow(DataSize bytes_acked) {
     target_window += rtt_variance_weight_ * rtt_stats_.mean_deviation() *
                      BandwidthEstimate();
   } else if (max_aggregation_bytes_multiplier_ > 0 && is_at_full_bandwidth_) {
-    // Subtracting only half the bytes_acked_since_queue_drained ensures sending
-    // doesn't completely stop for a long period of time if the queue hasn't
-    // been drained recently.
+    // 只减去一半的 bytes_acked_since_queue_drained 可以确保如果队列最近没有被排空，
+    // 发送不会完全停止很长时间。
     if (max_aggregation_bytes_multiplier_ * max_ack_height_.GetBest() >
         bytes_acked_since_queue_drained_ / 2) {
       target_window +=
@@ -881,20 +944,17 @@ void BbrNetworkController::CalculateCongestionWindow(DataSize bytes_acked) {
     target_window += max_ack_height_.GetBest();
   }
 
-  // Instead of immediately setting the target CWND as the new one, BBR grows
-  // the CWND towards |target_window| by only increasing it |bytes_acked| at a
-  // time.
+  // 与其立即将目标 CWND 设置为新的，BBR 通过一次仅增加它 |bytes_acked| 来增长 CWND 向 |target_window|。
   if (is_at_full_bandwidth_) {
     congestion_window_ =
         std::min(target_window, congestion_window_ + bytes_acked);
   } else if (congestion_window_ < target_window ||
-             sampler_->total_data_acked() < initial_congestion_window_) {
-    // If the connection is not yet out of startup phase, do not decrease the
-    // window.
+             sampler_.total_data_acked() < initial_congestion_window_) {
+    // 如果连接尚未退出启动阶段，不要减小窗口。
     congestion_window_ = congestion_window_ + bytes_acked;
   }
 
-  // Enforce the limits on the congestion window.
+  // 强制执行拥塞窗口的限制。
   congestion_window_ = std::max(congestion_window_, min_congestion_window_);
   congestion_window_ = std::min(congestion_window_, max_congestion_window_);
 }
@@ -911,30 +971,28 @@ void BbrNetworkController::CalculateRecoveryWindow(DataSize bytes_acked,
     return;
   }
 
-  // Set up the initial recovery window.
+  // 设置初始恢复窗口。
   if (recovery_window_.IsZero()) {
     recovery_window_ = bytes_in_flight + bytes_acked;
     recovery_window_ = std::max(min_congestion_window_, recovery_window_);
     return;
   }
 
-  // Remove losses from the recovery window, while accounting for a potential
-  // integer underflow.
+  // 从恢复窗口中移除损失，同时考虑潜在的整数下溢。
   recovery_window_ = recovery_window_ >= bytes_lost
                          ? recovery_window_ - bytes_lost
                          : kMaxSegmentSize;
 
-  // In CONSERVATION mode, just subtracting losses is sufficient.  In GROWTH,
-  // release additional |bytes_acked| to achieve a slow-start-like behavior.
-  // In MEDIUM_GROWTH, release |bytes_acked| / 2 to split the difference.
+  // 在 CONSERVATION 模式下，仅减去损失就足够了。在 GROWTH 中，
+  // 释放额外的 |bytes_acked| 以实现类似慢启动的行为。
+  // 在 MEDIUM_GROWTH 中，释放 |bytes_acked| / 2 来折中。
   if (recovery_state_ == GROWTH) {
     recovery_window_ += bytes_acked;
   } else if (recovery_state_ == MEDIUM_GROWTH) {
     recovery_window_ += bytes_acked / 2;
   }
 
-  // Sanity checks.  Ensure that we always allow to send at least
-  // |bytes_acked| in response.
+  // 合理性检查。确保我们始终允许至少发送 |bytes_acked| 作为响应。
   recovery_window_ = std::max(recovery_window_, bytes_in_flight + bytes_acked);
   recovery_window_ = std::max(min_congestion_window_, recovery_window_);
 }
@@ -945,7 +1003,7 @@ void BbrNetworkController::OnApplicationLimited(DataSize bytes_in_flight) {
   }
 
   app_limited_since_last_probe_rtt_ = true;
-  sampler_->OnAppLimited();
+  sampler_.OnAppLimited();
 
   RTC_LOG(LS_INFO) << "Becoming application limited. Last sent packet: "
                    << last_sent_packet_

@@ -9,6 +9,8 @@
 
 #include "uv_loop.h"
 
+#include "modules/congestion_controller/bbr/bbr_factory.h"
+
 namespace bifrost {
 /* Static. */
 static constexpr uint32_t MinBitrate{30000u};
@@ -33,8 +35,10 @@ static uint8_t ProbationPacketHeader[] = {
 /* Instance methods. */
 TransportCongestionControlClient::TransportCongestionControlClient(
     TransportCongestionControlClient::Observer* observer,
+    quic::CongestionControlType congestion_algorithm_type,
     uint32_t initial_available_bitrate, UvLoop** uv_loop)
     : observer_(observer),
+      congestion_algorithm_type_(congestion_algorithm_type),
       initial_available_bitrate_(
           std::max<uint32_t>(initial_available_bitrate, MinBitrate)),
       max_outgoing_bitrate_(MaxAvailableBitrate),
@@ -44,8 +48,12 @@ TransportCongestionControlClient::TransportCongestionControlClient(
   // Provide RTCP feedback as well as Receiver Reports.
   config.feedback_only = false;
 
-  this->controller_factory_ =
-      new webrtc::GoogCcNetworkControllerFactory(std::move(config));
+  if(congestion_algorithm_type_ == quic::kGoogCC){
+    this->controller_factory_ =
+        new webrtc::GoogCcNetworkControllerFactory(std::move(config));
+  } else if(congestion_algorithm_type_ == quic::kBBRvWebrtc){
+    this->controller_factory_ = new webrtc::BbrNetworkControllerFactory();
+  }
 
   this->InitializeController();
 }
@@ -290,7 +298,7 @@ void TransportCongestionControlClient::MayEmitAvailableBitrateEvent(
 }
 
 void TransportCongestionControlClient::OnTargetTransferRate(
-    webrtc::TargetTransferRate targetTransferRate) {
+    webrtc::TargetTransferRate targetTransferRate, webrtc::NetworkControlUpdate networkUpdate) {
   // NOTE: The same value as 'this->initialAvailableBitrate' is received
   // periodically regardless of the real available bitrate. Skip such value
   // except for the first time this event is called.
@@ -300,6 +308,9 @@ void TransportCongestionControlClient::OnTargetTransferRate(
           this->initial_available_bitrate_) {
     return;
   }
+
+  pacing_rate_ = networkUpdate.pacer_config->data_rate().bps();
+  congestion_window_ = networkUpdate.congestion_window->bytes();
 
   auto previousAvailableBitrate = this->bitrates_.availableBitrate;
 
@@ -312,8 +323,16 @@ void TransportCongestionControlClient::OnTargetTransferRate(
     this->bitrates_.availableBitrate =
         static_cast<uint32_t>(targetTransferRate.target_rate.bps());
 
-//  std::cout << "[tcc client] new available bitrate:"
-//            << this->bitrates_.availableBitrate << std::endl;
+  std::cout << "[tcc client] :"
+            << " ,new available bitrate=" << this->bitrates_.availableBitrate
+            << " ,target_rate=" << networkUpdate.target_rate->target_rate.bps() 
+            << " ,data_rate=" << networkUpdate.pacer_config->data_rate().bps()
+            << " ,pad_rate=" << networkUpdate.pacer_config->pad_rate().bps()
+            << " ,data_window=" << networkUpdate.pacer_config->data_window.bytes()
+            << " ,pad_window=" << networkUpdate.pacer_config->pad_window.bytes()
+            << " ,time_window=" << networkUpdate.pacer_config->time_window.ms()
+            << " ,congestion_window=" << networkUpdate.congestion_window->bytes()
+            << std::endl;
 
   MayEmitAvailableBitrateEvent(previousAvailableBitrate);
 }
@@ -345,4 +364,24 @@ void TransportCongestionControlClient::OnTimer(UvTimer* timer) {
     MayEmitAvailableBitrateEvent(this->bitrates_.availableBitrate);
   }
 }
+
+uint32_t TransportCongestionControlClient::get_pacing_rate() { 
+  uint32_t pacing_rate = (pacing_rate_ != 0) ? pacing_rate_ : bitrates_.availableBitrate;
+  
+  return pacing_rate; 
+}
+uint32_t TransportCongestionControlClient::get_congestion_windows() { 
+  return congestion_window_; 
+}
+uint32_t TransportCongestionControlClient::get_bytes_in_flight() { 
+  return bytes_in_flight_; 
+}
+uint32_t TransportCongestionControlClient::get_pacing_transfer_time(uint32_t bytes) { 
+  return 0; 
+}
+
+uint32_t TransportCongestionControlClient::get_avalibale_bitrate() {
+  return bitrates_.availableBitrate;
+}
+
 }  // namespace bifrost

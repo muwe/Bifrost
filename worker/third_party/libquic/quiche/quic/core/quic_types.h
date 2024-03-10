@@ -447,6 +447,7 @@ enum CongestionControlType {
   kPCC,
   kGoogCC,
   kBBRv2,
+  kBBRvWebrtc,  //added by weiqing@ywq
 };
 
 QUIC_EXPORT_PRIVATE std::string CongestionControlTypeToString(

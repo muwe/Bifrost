@@ -23,13 +23,12 @@
 
 namespace webrtc {
 
-// Application limited region detector is a class that utilizes signals of
-// elapsed time and bytes sent to estimate whether network traffic is
-// currently limited by the application's ability to generate traffic.
+// 应用程序限制区域检测器是一个类，它使用经过的时间和发送的字节信号来估计网络流量是否
+// 当前受到应用程序生成流量能力的限制。
 //
-// AlrDetector provides a signal that can be utilized to adjust
-// estimate bandwidth.
-// Note: This class is not thread-safe.
+// AlrDetector 提供了一个信号，可用于调整
+// 估计带宽。
+// 注意：此类不是线程安全的。
 class AlrDetector {
  public:
   explicit AlrDetector(const WebRtcKeyValueConfig* key_value_config,
@@ -38,22 +37,22 @@ class AlrDetector {
 
   void OnBytesSent(size_t bytes_sent, int64_t send_time_ms);
 
-  // Set current estimated bandwidth.
+  // 设置当前估计带宽。
   void SetEstimatedBitrate(int bitrate_bps);
 
-  // Returns time in milliseconds when the current application-limited region
-  // started or empty result if the sender is currently not application-limited.
+  // 返回当前应用程序限制区域开始的时间（以毫秒为单位）
+  // 如果发送方当前不受应用程序限制，则返回空结果。
   absl::optional<int64_t> GetApplicationLimitedRegionStartTime() const;
 
   void UpdateBudgetWithElapsedTime(int64_t delta_time_ms);
   void UpdateBudgetWithBytesSent(size_t bytes_sent);
 
  private:
-  // Sent traffic ratio as a function of network capacity used to determine
-  // application-limited region. ALR region start when bandwidth usage drops
-  // below kAlrStartUsageRatio and ends when it raises above
-  // kAlrEndUsageRatio. NOTE: This is intentionally conservative at the moment
-  // until BW adjustments of application limited region is fine tuned.
+  // 作为网络容量使用率的已发送流量比率，用于确定
+  // 应用程序限制区域。当带宽使用率下降时，ALR 区域开始
+  // 低于 kAlrStartUsageRatio，并在上升到
+  // kAlrEndUsageRatio。注意：这在目前是有意保守的
+  // 直到对应用程序限制区域的带宽调整进行微调。
   static constexpr double kDefaultBandwidthUsageRatio = 0.65;
   static constexpr double kDefaultStartBudgetLevelRatio = 0.80;
   static constexpr double kDefaultStopBudgetLevelRatio = 0.50;
@@ -73,6 +72,7 @@ class AlrDetector {
 
   bifrost::UvLoop* loop_;
 };
+
 }  // namespace webrtc
 
 #endif  // MODULES_CONGESTION_CONTROLLER_GOOG_CC_ALR_DETECTOR_H_

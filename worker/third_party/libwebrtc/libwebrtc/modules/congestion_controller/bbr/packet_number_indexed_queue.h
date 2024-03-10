@@ -25,66 +25,55 @@
 namespace webrtc {
 namespace bbr {
 
-// PacketNumberIndexedQueue is a queue of mostly continuous numbered entries
-// which supports the following operations:
-// - adding elements to the end of the queue, or at some point past the end
-// - removing elements in any order
-// - retrieving elements
-// If all elements are inserted in order, all of the operations above are
-// amortized O(1) time.
+// PacketNumberIndexedQueue 是一个主要由连续编号的条目组成的队列，
+// 支持以下操作：
+// - 向队列末尾添加元素，或在末尾之后的某个位置添加
+// - 以任意顺序移除元素
+// - 检索元素
+// 如果所有元素都按顺序插入，上述所有操作的时间复杂度都是摊销 O(1)。
 //
-// Internally, the data structure is a deque where each element is marked as
-// present or not.  The deque starts at the lowest present index.  Whenever an
-// element is removed, it's marked as not present, and the front of the deque is
-// cleared of elements that are not present.
+// 在内部，数据结构是一个双端队列，其中每个元素都标记为存在或不存在。
+// 双端队列从最低的存在索引开始。每当移除一个元素时，它会被标记为不存在，
+// 并且双端队列的前端会清除所有不存在的元素。
 //
-// The tail of the queue is not cleared due to the assumption of entries being
-// inserted in order, though removing all elements of the queue will return it
-// to its initial state.
+// 由于假设条目是按顺序插入的，队列的尾部不会被清除，尽管移除队列中的所有元素
+// 会将其恢复到初始状态。
 //
-// Note that this data structure is inherently hazardous, since an addition of
-// just two entries will cause it to consume all of the memory available.
-// Because of that, it is not a general-purpose container and should not be used
-// as one.
+// 注意，这个数据结构本质上是危险的，因为仅添加两个条目就会导致它消耗所有可用的内存。
+// 因此，它不是一个通用容器，不应该被当作一个通用容器使用。
 template <typename T>
 class PacketNumberIndexedQueue {
  public:
   PacketNumberIndexedQueue()
       : number_of_present_entries_(0), first_packet_(0) {}
 
-  // Retrieve the entry associated with the packet number.  Returns the pointer
-  // to the entry in case of success, or nullptr if the entry does not exist.
+  // 检索与包号关联的条目。成功时返回条目的指针，如果条目不存在则返回 nullptr。
   T* GetEntry(int64_t packet_number);
   const T* GetEntry(int64_t packet_number) const;
 
-  // Inserts data associated |packet_number| into (or past) the end of the
-  // queue, filling up the missing intermediate entries as necessary.  Returns
-  // true if the element has been inserted successfully, false if it was already
-  // in the queue or inserted out of order.
+  // 将与 |packet_number| 关联的数据插入到队列的末尾（或末尾之后），
+  // 必要时填充缺失的中间条目。如果元素已成功插入，则返回 true；
+  // 如果元素已在队列中或插入顺序错误，则返回 false。
   template <typename... Args>
   bool Emplace(int64_t packet_number, Args&&... args);
 
-  // Removes data associated with |packet_number| and frees the slots in the
-  // queue as necessary.
+  // 移除与 |packet_number| 关联的数据，并根据需要释放队列中的槽位。
   bool Remove(int64_t packet_number);
 
   bool IsEmpty() const { return number_of_present_entries_ == 0; }
 
-  // Returns the number of entries in the queue.
+  // 返回队列中的条目数量。
   size_t number_of_present_entries() const {
     return number_of_present_entries_;
   }
 
-  // Returns the number of entries allocated in the underlying deque.  This is
-  // proportional to the memory usage of the queue.
+  // 返回底层双端队列中分配的条目数量。这与队列的内存使用量成正比。
   size_t entry_slots_used() const { return entries_.size(); }
 
-  // Packet number of the first entry in the queue.  Zero if the queue is empty.
+  // 队列中第一个条目的包号。如果队列为空，则为零。
   int64_t first_packet() const { return first_packet_; }
 
-  // Packet number of the last entry ever inserted in the queue.  Note that the
-  // entry in question may have already been removed.  Zero if the queue is
-  // empty.
+  // 队列中最后一个插入的条目的包号。注意，该条目可能已经被移除。如果队列为空，则为零。
   int64_t last_packet() const {
     if (IsEmpty()) {
       return 0;
@@ -93,7 +82,7 @@ class PacketNumberIndexedQueue {
   }
 
  private:
-  // Wrapper around T used to mark whether the entry is actually in the map.
+  // 用于标记条目是否实际在映射中的 T 的包装器。
   struct EntryWrapper {
     T data;
     bool present;
@@ -105,7 +94,7 @@ class PacketNumberIndexedQueue {
         : data(std::forward<Args>(args)...), present(true) {}
   };
 
-  // Cleans up unused slots in the front after removing an element.
+  // 在移除元素后清理前端未使用的槽位。
   void Cleanup();
 
   const EntryWrapper* GetEntryWrapper(int64_t offset) const;
@@ -151,12 +140,12 @@ bool PacketNumberIndexedQueue<T>::Emplace(int64_t packet_number,
     return true;
   }
 
-  // Do not allow insertion out-of-order.
+  // 不允许乱序插入。
   if (packet_number <= last_packet()) {
     return false;
   }
 
-  // Handle potentially missing elements.
+  // 处理可能缺失的元素。
   int64_t offset = packet_number - first_packet_;
   if (offset > static_cast<int64_t>(entries_.size())) {
     entries_.resize(offset);

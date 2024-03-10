@@ -13,6 +13,8 @@
 #include "rtcp_tcc.h"
 #include "rtp_packet.h"
 #include "uv_timer.h"
+#include "quiche/quic/core/quic_types.h"
+
 
 namespace bifrost {
 class TransportCongestionControlClient
@@ -63,17 +65,18 @@ class TransportCongestionControlClient
                                float rtt, int64_t nowMs) override {
     this->ReceiveRtcpReceiverReport(report, rtt, nowMs);
   }
-  uint32_t get_pacing_rate() override { return this->get_available_bitrate(); }
-  uint32_t get_congestion_windows() { return 0; }
-  uint32_t get_bytes_in_flight() { return 0; }
-  uint32_t get_pacing_transfer_time(uint32_t bytes) { return 0; }
+  uint32_t get_pacing_rate() override;
+  uint32_t get_congestion_windows();
+  uint32_t get_bytes_in_flight();
+  uint32_t get_pacing_transfer_time(uint32_t bytes);
   std::vector<double> get_trends() override {
     return this->get_trend();
   }
-
+  uint32_t get_avalibale_bitrate() override;
  public:
   TransportCongestionControlClient(
       TransportCongestionControlClient::Observer* observer,
+      quic::CongestionControlType congestion_algorithm_type,
       uint32_t initial_available_bitrate, UvLoop** uv_loop);
   ~TransportCongestionControlClient() override;
 
@@ -109,7 +112,7 @@ class TransportCongestionControlClient
   /* Pure virtual methods inherited from webrtc::TargetTransferRateObserver. */
  public:
   void OnTargetTransferRate(
-      webrtc::TargetTransferRate targetTransferRate) override;
+      webrtc::TargetTransferRate target_transfer_rate, webrtc::NetworkControlUpdate network_update) override;
 
   /* Pure virtual methods inherited from webrtc::PacketRouter. */
   void OnStartRateUpdate(webrtc::DataRate) override {}
@@ -143,6 +146,11 @@ class TransportCongestionControlClient
   uint64_t last_available_bitrate_event_at_ms_{0u};
   std::deque<double> packet_loss_history_;
   double packet_loss_{0};
+
+  uint32_t pacing_rate_ = 0;
+  uint32_t congestion_window_ = 0;
+  uint32_t bytes_in_flight_ = 0;
+  quic::CongestionControlType congestion_algorithm_type_;
 };
 }  // namespace bifrost
 

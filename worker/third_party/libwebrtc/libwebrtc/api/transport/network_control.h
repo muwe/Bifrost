@@ -27,10 +27,13 @@ class TargetTransferRateObserver {
   virtual ~TargetTransferRateObserver() = default;
   // Called to indicate target transfer rate as well as giving information about
   // the current estimate of network parameters.
-  virtual void OnTargetTransferRate(TargetTransferRate) = 0;
+  virtual void OnTargetTransferRate(TargetTransferRate) {}
   // Called to provide updates to the expected target rate in case it changes
   // before the first call to OnTargetTransferRate.
   virtual void OnStartRateUpdate(DataRate) {}
+
+  virtual void OnTargetTransferRate(TargetTransferRate target_transfer_rate, NetworkControlUpdate network_update) {}
+
 };
 
 // Configuration sent to factory create function. The parameters here are

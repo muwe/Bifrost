@@ -29,6 +29,7 @@ class BifrostSendAlgorithmInterface {
   virtual uint32_t get_bytes_in_flight() = 0;
   virtual uint32_t get_pacing_transfer_time(uint32_t bytes) = 0;
   virtual std::vector<double> get_trends() = 0;
+  virtual uint32_t get_avalibale_bitrate() = 0;
 };
 }  // namespace bifrost
 #endif  //_BIFROST_SEND_ALGORITHM_INTERFACE_H

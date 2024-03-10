@@ -10,8 +10,8 @@
 #ifndef _BIFROST_PACER_H
 #define _BIFROST_PACER_H
 
-//#define USE_FAKE_DATA_PRODUCER 1
-#define USE_FLEX_FEC_PROTECT 1
+#define USE_FAKE_DATA_PRODUCER 1
+//#define USE_FLEX_FEC_PROTECT 1
 
 #include <modules/rtp_rtcp/include/flexfec_sender.h>
 #include <modules/video_coding/media_opt_util.h>
@@ -45,30 +45,14 @@ class BifrostPacer : public UvTimer::Listener {
  public:
   void UpdateFecRates(uint8_t fraction_lost, int64_t round_trip_time_ms);
 
-  void set_pacing_rate(uint32_t pacing_rate) {
-    target_bitrate_ = pacing_rate;
-    pacing_rate_ =
-        pacing_rate > MaxPacingDataLimit ? MaxPacingDataLimit : pacing_rate;
-  }  // bps
-  void set_pacing_congestion_windows(uint32_t congestion_windows) {
-    pacing_congestion_windows_ = congestion_windows;
-  }
-  void set_bytes_in_flight(uint32_t bytes_in_flight) {
-    bytes_in_flight_ = bytes_in_flight;
-  }
-  void set_pacing_transfer_time(uint32_t pacing_transfer_time) {
-    pacing_transfer_time_ = pacing_transfer_time;
-  }
-  void NackReadyToSendPacket(RtpPacketPtr packet) {
-    this->ready_send_vec_.push_back(packet);
-  }
-  uint32_t get_pacing_packet_count() {
-    auto tmp = pacing_packet_count_;
-    pacing_packet_count_ = 0;
-    return tmp;
-  }
-  uint32_t get_pacing_bytes() { return pacing_bytes_; }
-  uint32_t get_pacing_bitrate_bps() { return pacing_bitrate_bps_; }
+  void set_pacing_rate(uint32_t pacing_rate);
+  void set_pacing_congestion_windows(uint32_t congestion_windows);
+  void set_bytes_in_flight(uint32_t bytes_in_flight);
+  void set_pacing_transfer_time(uint32_t pacing_transfer_time);
+  void NackReadyToSendPacket(RtpPacketPtr packet);
+  uint32_t get_pacing_packet_count(); 
+  uint32_t get_pacing_bytes();
+  uint32_t get_pacing_bitrate_bps();
 
  private:
   void SetProtectionMethod(bool enable_fec, bool enable_nack);
